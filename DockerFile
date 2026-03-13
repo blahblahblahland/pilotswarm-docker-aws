@@ -1,0 +1,17 @@
+FROM node:24-bookworm
+
+WORKDIR /app
+
+# Copy package manifests and the scripts directory (for postinstall)
+COPY package.json package-lock.json ./          
+COPY scripts ./scripts                           
+RUN npm ci --include=optional
+
+# Now copy the rest of the source
+COPY . .
+
+RUN npm run build
+
+ENV NODE_ENV=production
+
+CMD ["sh", "-c", "node --env-file=.env examples/chat.js"]

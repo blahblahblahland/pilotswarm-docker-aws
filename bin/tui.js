@@ -18,7 +18,7 @@
 import { parseArgs } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(__dirname, "..");
@@ -227,4 +227,7 @@ if (mode === "local" && workerModulePath) {
 // The TUI is the same file, but now reads config from env vars set above
 // instead of relying on the user to set them manually.
 const tuiPath = path.join(pkgRoot, "cli", "tui.js");
-await import(tuiPath);
+// BEFORE:
+// await import(tuiPath);
+// AFTER:
+await import(pathToFileURL(tuiPath));

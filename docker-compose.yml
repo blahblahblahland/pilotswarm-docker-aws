@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: pilotswarm_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: pilotswarm
+    ports:
+      - "5432:5432"
+
+  pilotswarm:
+    build:
+      context: .
+      dockerfile: DockerFile
+    container_name: pilotswarm_app
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://postgres:admin@postgres:5432/pilotswarm
+      GITHUB_TOKEN: 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
