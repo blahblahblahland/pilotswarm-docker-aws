@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 .env.remote
+.env.*
+!.env.example
 *.tgz
 vendor/
 nohup.out

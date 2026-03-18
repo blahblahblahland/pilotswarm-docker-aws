@@ -100,6 +100,48 @@ Client                        PostgreSQL                     Worker Pods
 | [Worker](examples/worker.js) | Headless worker for K8s | `npm run worker` |
 | [Tests](test/sdk.test.js) | Automated test suite | `npm test` |
 
+## Run with Docker
+
+PilotSwarm includes a `docker-compose.yml` that starts PostgreSQL and builds the app image.
+
+### Prereqs
+
+- Create a local `.env` in the repo root (do **not** commit it) with at least:
+
+```bash
+DATABASE_URL=postgresql://postgres:admin@postgres:5432/pilotswarm
+GITHUB_TOKEN=...
+WORKERS=1
+```
+
+Notes:
+- Inside Docker Compose, the PostgreSQL host must be `postgres` (the compose service name), not `localhost`.
+- If your Copilot token has no entitlement/quota, worker turns will fail with `402 You have no quota`. In that case, use a BYOK provider via `model_providers.json` / `LLM_API_KEY` instead.
+
+### Start PostgreSQL
+
+```bash
+docker compose up -d postgres
+```
+
+### Run the TUI (recommended)
+
+The TUI will best-effort load `/app/.env`, so mounting your `.env` file is the most reliable approach across shells/Compose variants:
+
+```bash
+docker compose run --rm -it -v "${PWD}/.env:/app/.env:ro" pilotswarm node bin/tui.js
+```
+
+### Logs and troubleshooting
+
+- Worker/runtime logs are written to `/tmp/duroxide-tui.log` inside the container. To inspect:
+
+```bash
+docker exec -i <container_name> sh -lc "tail -n 200 /tmp/duroxide-tui.log"
+```
+
+- If the UI looks “blank” during startup, check for missing env warnings in the left pane and confirm your `.env` is mounted into `/app/.env`.
+
 ## Documentation
 
 | Guide | Description |

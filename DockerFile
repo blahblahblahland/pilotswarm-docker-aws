@@ -14,4 +14,4 @@ RUN npm run build
 
 ENV NODE_ENV=production
 
-CMD ["sh", "-c", "node --env-file=.env examples/chat.js"]
+CMD ["sh", "-c", "node bin/tui.js"]

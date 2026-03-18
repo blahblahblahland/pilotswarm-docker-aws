@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-03-17
+
+### TUI (`cli/tui.js`)
+
+- **Defensive `.env` loading** — TUI now best-effort loads `.env` at startup (without overriding existing env vars) to reduce Docker/Compose env propagation issues.
+- **Clear missing-env warnings** — startup warns when common required env vars are missing (`DATABASE_URL`, `WORKERS`, `GITHUB_TOKEN` in embedded-worker mode).
+- **Startup stability fixes**:
+  - sequential startup of client + management client to avoid PostgreSQL schema-init races
+  - fixed temporal dead-zone crash for `currentModel` referenced before initialization
+- **Worker startup hardening** — per-worker progress status + configurable startup timeout via `WORKER_START_TIMEOUT_MS` (default 60s) with a visible error instead of a silent hang.
+- **Reduced log noise in the UI** — routes `console.*` output to `/tmp/duroxide-tui.log` so logs don’t corrupt the full-screen TUI.
+
+### Docker / Compose
+
+- **Default container command runs the TUI** (see `DockerFile`).
+- **Compose reads env from `.env`** via `env_file` (see `docker-compose.yml`).
+
 ## 2026-03-01
 
 ### CLI (`bin/tui.js`)

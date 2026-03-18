@@ -27,6 +27,34 @@ import os from "node:os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// ─── Env loading (defensive) ─────────────────────────────────────
+// In many Docker/Compose setups, `.env` may be mounted into the container
+// but not injected into the process environment (especially with `compose run`).
+// `bin/tui.js` already supports `--env`, but users sometimes invoke this file
+// directly or the wrapper isn't used. To avoid "blank" startup due to missing
+// DATABASE_URL / WORKERS / GITHUB_TOKEN, we opportunistically load `.env` here.
+function loadDotEnvFile(dotEnvPath = ".env") {
+    try {
+        if (!fs.existsSync(dotEnvPath)) return;
+        const envContent = fs.readFileSync(dotEnvPath, "utf-8");
+        for (const line of envContent.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const eqIdx = trimmed.indexOf("=");
+            if (eqIdx === -1) continue;
+            const key = trimmed.slice(0, eqIdx).trim();
+            const value = trimmed.slice(eqIdx + 1).trim();
+            // Do not override already-set env vars
+            if (!process.env[key]) process.env[key] = value;
+        }
+    } catch {
+        // Best-effort only — TUI will surface missing env later.
+    }
+}
+
+// Load `.env` early, before we read DATABASE_URL/WORKERS/etc.
+loadDotEnvFile(process.env.ENV_FILE || ".env");
+
 // ─── Artifact exports directory ──────────────────────────────────
 const EXPORTS_DIR = path.join(os.homedir(), "pilotswarm-exports");
 fs.mkdirSync(EXPORTS_DIR, { recursive: true });
@@ -2493,6 +2521,22 @@ const store = process.env.DATABASE_URL || "sqlite::memory:";
 const numWorkers = parseInt(process.env.WORKERS ?? "4", 10);
 const isRemote = numWorkers === 0;
 
+// Model selection (declared early because startup paths reference it)
+// Default model — env override, then empty (worker/registry may supply default).
+let currentModel = process.env.COPILOT_MODEL || "";
+
+// Surface missing env early — avoids confusing "blank" startup.
+// These are commonly missing when `.env` is mounted but not injected.
+const missingEnv = [];
+if (!process.env.DATABASE_URL) missingEnv.push("DATABASE_URL");
+if (!isRemote && !process.env.GITHUB_TOKEN) missingEnv.push("GITHUB_TOKEN");
+if (!process.env.WORKERS) missingEnv.push("WORKERS");
+if (missingEnv.length > 0) {
+    appendLog(`{yellow-fg}Missing env: ${missingEnv.join(", ")}{/yellow-fg}`);
+    appendLog(`{gray-fg}Tip: mount .env to /app/.env or pass -e vars when running Docker.{/gray-fg}`);
+    appendLog("");
+}
+
 if (isRemote) {
     screen.title = "PilotSwarm (Scaled — Remote Workers)";
     appendLog("{bold}Mode:{/bold} {magenta-fg}Scaled (AKS Workers){/magenta-fg}");
@@ -2565,6 +2609,7 @@ if (!isRemote) {
 
     setStatus(`Starting ${numWorkers} workers...`);
     for (let i = 0; i < numWorkers; i++) {
+        setStatus(`Starting worker ${i + 1}/${numWorkers}...`);
         const w = new PilotSwarmWorker({
             store,
             githubToken: process.env.GITHUB_TOKEN,
@@ -2583,7 +2628,24 @@ if (!isRemote) {
         if (workerModuleConfig.tools?.length) {
             w.registerTools(workerModuleConfig.tools);
         }
-        await w.start();
+        // Worker startup can hang (DB init, native runtime init, network).
+        // Put a hard ceiling so the TUI doesn't look frozen.
+        const WORKER_START_TIMEOUT_MS = parseInt(process.env.WORKER_START_TIMEOUT_MS ?? "60000", 10);
+        const startPromise = w.start();
+        const timeoutPromise = new Promise((_, reject) => {
+            const t = setTimeout(() => reject(new Error(`Worker start timed out after ${WORKER_START_TIMEOUT_MS}ms`)), WORKER_START_TIMEOUT_MS);
+            t.unref?.();
+        });
+        try {
+            await Promise.race([startPromise, timeoutPromise]);
+        } catch (err) {
+            // Restore stdout so the user can see the error even if we were suppressing.
+            process.stdout.write = origStdoutWrite;
+            process.stderr.write = origStderrWrite;
+            appendLog(`{red-fg}Worker local-rt-${i} failed to start: ${err?.message || err}{/red-fg}`);
+            appendLog(`{gray-fg}Check DATABASE_URL/GITHUB_TOKEN and /tmp/duroxide-tui.log for details.{/gray-fg}`);
+            throw err;
+        }
         workers.push(w);
         appendLog(`Worker local-rt-${i} started ✓`);
     }
@@ -2613,6 +2675,32 @@ if (!isRemote) {
         if (typeof cb === "function") cb();
         return true;
     };
+
+    // Also route console.* to the same log file. Any stdout/stderr writes that
+    // happen while blessed is in alt-screen will visually corrupt the UI.
+    // We keep blessed's own rendering (process.stdout.write) intact.
+    const _origConsole = {
+        log: console.log.bind(console),
+        info: console.info.bind(console),
+        warn: console.warn.bind(console),
+        error: console.error.bind(console),
+    };
+    function _consoleToFile(prefix, args) {
+        try {
+            const msg = args.map(a => {
+                if (typeof a === "string") return a;
+                if (a instanceof Error) return a.stack || a.message;
+                try { return JSON.stringify(a); } catch { return String(a); }
+            }).join(" ");
+            fs.appendFileSync(logFd, `[${prefix}] ${msg}\n`);
+        } catch {
+            // ignore
+        }
+    }
+    console.log = (...args) => _consoleToFile("log", args);
+    console.info = (...args) => _consoleToFile("info", args);
+    console.warn = (...args) => _consoleToFile("warn", args);
+    console.error = (...args) => _consoleToFile("error", args);
 
     // Rust native code writes directly to fd 1/2 during init, bypassing Node
     // and corrupting blessed's alt-screen buffer. Wipe the terminal and force
@@ -2714,8 +2802,7 @@ if (!isRemote) {
 }
 
 // ─── Model selection ─────────────────────────────────────────────
-// Default model — prefer registry defaultModel, env override, then empty (worker picks default).
-let currentModel = process.env.COPILOT_MODEL || "";
+// currentModel declared earlier (before model providers loading)
 
 // In remote mode (no local workers), load model_providers.json directly
 // so the TUI can show model lists and the Shift+N picker.
@@ -2754,16 +2841,17 @@ _origRender();
 // During remote DB outages, keep the TUI alive and retry every 30s.
 while (true) {
     const _startPh = perfStart("startup.clientConnect");
-    const results = await Promise.allSettled([client.start(), mgmt.start()]);
-    const failure = results.find(r => r.status === "rejected");
+    let err = null;
 
-    if (!failure) {
+    try {
+        await client.start();
+        await mgmt.start();
         perfEnd(_startPh);
         break;
+    } catch (e) {
+        err = e;
+        perfEnd(_startPh, { err: true });
     }
-
-    const err = failure.reason;
-    perfEnd(_startPh, { err: true });
 
     try { await client.stop(); } catch {}
     try { await mgmt.stop(); } catch {}
