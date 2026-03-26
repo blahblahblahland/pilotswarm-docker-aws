@@ -22,6 +22,38 @@ export interface SessionMetadata {
     [key: string]: unknown;
 }
 
+/** A single object entry returned by BlobStore.listAllObjects(). */
+export interface BlobStoreObject  {
+    name: string;
+    sizeBytes: number;
+}
+
+/**
+ * Storage-agnostic interface for session blob operations.
+ *
+ * Implemented by:
+ *   - SessionBlobStore — Azure Blob Storage
+ *   - S3BlobStore      — Amazon S3
+ *
+ * The worker accepts either implementation via the `blobConnectionString`
+ * (Azure) or `s3Bucket` (AWS) options — S3 takes priority if both are set.
+ */
+export interface BlobStore {
+    dehydrate(sessionId: string, meta?: Record<string, unknown>): Promise<void>;
+    hydrate(sessionId: string): Promise<void>;
+    checkpoint(sessionId: string): Promise<void>;
+    exists(sessionId: string): Promise<boolean>;
+    delete(sessionId: string): Promise<void>;
+    uploadArtifact(sessionId: string, filename: string, content: string, contentType?: string): Promise<string>;
+    downloadArtifact(sessionId: string, filename: string): Promise<string>;
+    listArtifacts(sessionId: string): Promise<string[]>;
+    artifactExists(sessionId: string, filename: string): Promise<boolean>;
+    /** Returns a short-lived pre-signed/SAS URL for direct artifact download. */
+    generateArtifactSasUrl(sessionId: string, filename: string, expiryMinutes?: number): string;
+    deleteArtifacts(sessionId: string): Promise<number>;
+    /** Iterate every object in the store — used by resource manager for stats and orphan cleanup. */
+    listAllObjects(): AsyncIterable<BlobStoreObject>;
+}
 /**
  * Manages session state in Azure Blob Storage.
  *
@@ -32,7 +64,7 @@ export interface SessionMetadata {
  *
  * @internal
  */
-export class SessionBlobStore {
+export class SessionBlobStore implements BlobStore {
     private containerClient;
     private connectionString: string;
     private containerName: string;
@@ -272,4 +304,13 @@ export class SessionBlobStore {
         }
         return count;
     }
+    async *listAllObjects(): AsyncIterable<BlobStoreObject> {
+    for await (const blob of this.containerClient.listBlobsFlat({ includeMetadata: true })) {
+        yield {
+            name: blob.name,
+            sizeBytes: blob.properties?.contentLength ?? 0,
+        };
+    }
+}
+
 }
