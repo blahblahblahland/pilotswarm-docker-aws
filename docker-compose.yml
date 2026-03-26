@@ -20,3 +20,17 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://postgres:admin@postgres:5432/pilotswarm
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: pilotswarm_web
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://postgres:admin@postgres:5432/pilotswarm
+      NODE_ENV: production
+      PORT: "3000"
+    ports:
+      - "3000:3000"

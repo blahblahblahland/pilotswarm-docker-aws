@@ -45,6 +45,24 @@
                     "cost": "low"
                 }
             ]
+        },
+        {
+            "id": "anthropic",
+            "type": "anthropic",
+            "baseUrl": "https://api.anthropic.com",
+            "apiKey": "env:ANTHROPIC_API_KEY",
+            "models": [
+                {
+                    "name": "claude-3-5-sonnet-20241022",
+                    "description": "Anthropic Claude 3.5 Sonnet (2024-10-22). Strong general-purpose model with good speed/quality balance.",
+                    "cost": "medium"
+                },
+                {
+                    "name": "claude-3-opus-20240229",
+                    "description": "Anthropic Claude 3 Opus (2024-02-29). Highest quality Anthropic model; use for the hardest problems.",
+                    "cost": "high"
+                }
+            ]
         }
     ],
     "defaultModel": "github-copilot:claude-opus-4.6"

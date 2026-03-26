@@ -14,6 +14,7 @@
 import type { PilotSwarmSessionStatus } from "./types.js";
 import type { SessionCatalogProvider } from "./cms.js";
 import { PgSessionCatalogProvider } from "./cms.js";
+import type { SessionEvent } from "./cms.js";
 import { SessionDumper } from "./session-dumper.js";
 import { loadModelProviders, type ModelProviderRegistry, type ModelDescriptor } from "./model-providers.js";
 
@@ -381,6 +382,18 @@ export class PilotSwarmManagementClient {
             "messages",
             JSON.stringify({ type: "cmd", ...command }),
         );
+    }
+
+    // ─── Events (CMS) ───────────────────────────────────────
+
+    /**
+     * Read persisted (non-ephemeral) session events from the CMS.
+     * Useful for UIs that want a cursor-based transcript.
+     */
+    async getSessionEvents(sessionId: string, afterSeq?: number, limit?: number): Promise<SessionEvent[]> {
+        this._ensureStarted();
+        if (!this._catalog) return [];
+        return await this._catalog.getSessionEvents(sessionId, afterSeq, limit);
     }
 
     // ─── Models ──────────────────────────────────────────────
