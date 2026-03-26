@@ -15,7 +15,7 @@
 import { defineTool } from "@github/copilot-sdk";
 import { execSync } from "node:child_process";
 import type { SessionCatalogProvider } from "./cms.js";
-import type { SessionBlobStore } from "./blob-store.js";
+import type { BlobStore } from "./blob-store.js";
 import type { Tool } from "@github/copilot-sdk";
 
 /**
@@ -24,7 +24,7 @@ import type { Tool } from "@github/copilot-sdk";
 export function createResourceManagerTools(opts: {
     catalog: SessionCatalogProvider;
     duroxideClient: any;
-    blobStore: SessionBlobStore | null;
+    blobStore: BlobStore | null;
     duroxideSchema?: string;
     cmsSchema?: string;
 }): Tool<any>[] {
@@ -146,13 +146,7 @@ export function createResourceManagerTools(opts: {
             try {
                 const detectOrphans = args.detectOrphans !== false;
 
-                // Access the container client via the blob store's internal container
-                // We need to iterate all blobs — use the internal containerClient
-                const containerClient = (blobStore as any).containerClient;
-                if (!containerClient) {
-                    return { error: "Cannot access blob storage container." };
-                }
-
+                // Iterate all blobs via the BlobStore interface
                 const stats = {
                     totalBlobs: 0,
                     totalSizeBytes: 0,
@@ -168,12 +162,12 @@ export function createResourceManagerTools(opts: {
                     sessionIds: new Set<string>(),
                 };
 
-                for await (const blob of containerClient.listBlobsFlat({ includeMetadata: true })) {
-                    const size = blob.properties?.contentLength ?? 0;
+                for await (const obj of blobStore.listAllObjects()) {
+                    const size = obj.sizeBytes;
+                    const name = obj.name;
                     stats.totalBlobs++;
                     stats.totalSizeBytes += size;
 
-                    const name = blob.name;
                     if (name.startsWith("artifacts/")) {
                         stats.byType.artifacts.count++;
                         stats.byType.artifacts.sizeBytes += size;
@@ -414,15 +408,13 @@ export function createResourceManagerTools(opts: {
             if (!blobStore) return { error: "Blob storage not configured." };
 
             try {
-                const containerClient = (blobStore as any).containerClient;
-                if (!containerClient) return { error: "Cannot access blob storage container." };
-
                 const confirm = args.confirm === true;
 
                 // Collect all session IDs referenced in blob storage
                 const blobSessionIds = new Set<string>();
-                for await (const blob of containerClient.listBlobsFlat()) {
-                    const name = blob.name;
+                for await (const obj of blobStore.listAllObjects()) {
+                    const name = obj.name;
+
                     if (name.endsWith(".tar.gz")) {
                         blobSessionIds.add(name.replace(".tar.gz", ""));
                     } else if (name.startsWith("artifacts/")) {

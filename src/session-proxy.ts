@@ -1,5 +1,5 @@
 import type { SessionManager } from "./session-manager.js";
-import type { SessionBlobStore } from "./blob-store.js";
+import type { BlobStore } from "./blob-store.js";
 import type { SessionCatalogProvider } from "./cms.js";
 import type { SerializableSessionConfig, TurnResult, OrchestrationInput } from "./types.js";
 import type { AgentConfig } from "./agent-loader.js";
@@ -118,7 +118,7 @@ export function createSessionManagerProxy(ctx: any) {
 export function registerActivities(
     runtime: any,
     sessionManager: SessionManager,
-    blobStore: SessionBlobStore | null,
+    blobStore: BlobStore | null,
     githubToken?: string,
     catalog?: SessionCatalogProvider | null,
     provider?: any,

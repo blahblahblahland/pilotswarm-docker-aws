@@ -1,6 +1,6 @@
 import { CopilotClient, type CopilotSession, type Tool } from "@github/copilot-sdk";
 import { ManagedSession } from "./managed-session.js";
-import { SessionBlobStore } from "./blob-store.js";
+import type { BlobStore } from "./blob-store.js";
 import type { ManagedSessionConfig, SerializableSessionConfig } from "./types.js";
 import type { ModelProviderRegistry } from "./model-providers.js";
 import fs from "node:fs";
@@ -46,7 +46,7 @@ export interface WorkerDefaults {
 export class SessionManager {
     private client: CopilotClient | null = null;
     private sessions = new Map<string, ManagedSession>();
-    private blobStore: SessionBlobStore | null = null;
+    private blobStore: BlobStore | null = null;
     /** In-memory configs with non-serializable fields (tools, hooks). */
     private sessionConfigs = new Map<string, ManagedSessionConfig>();
     /** Worker-level tool registry — shared reference from PilotSwarmWorker. */
@@ -56,7 +56,7 @@ export class SessionManager {
 
     constructor(
         private githubToken?: string,
-        blobStore?: SessionBlobStore | null,
+        blobStore?: BlobStore | null,
         workerDefaults?: WorkerDefaults,
     ) {
         this.blobStore = blobStore ?? null;

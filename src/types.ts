@@ -167,6 +167,8 @@ export interface PilotSwarmWorkerOptions {
     workerNodeId?: string;
     blobConnectionString?: string;
     blobContainer?: string;
+    s3Bucket?: string;
+    s3Region?: string;
 
     /**
      * Custom LLM provider (BYOK — Bring Your Own Key).

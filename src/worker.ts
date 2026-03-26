@@ -1,5 +1,6 @@
 import { SessionManager } from "./session-manager.js";
-import { SessionBlobStore } from "./blob-store.js";
+import { SessionBlobStore, BlobStore } from "./blob-store.js";
+import { S3BlobStore } from "./blob-store-s3.js";
 import { registerActivities } from "./session-proxy.js";
 import { durableSessionOrchestration_1_0_1 } from "./orchestration_1_0_1.js";
 import { durableSessionOrchestration_1_0_0 } from "./orchestration_1_0_0.js";
@@ -50,7 +51,7 @@ const DEFAULT_DUROXIDE_SCHEMA = "duroxide";
 export class PilotSwarmWorker {
     private config: PilotSwarmWorkerOptions & { waitThreshold: number };
     private sessionManager: SessionManager;
-    private blobStore: SessionBlobStore | null = null;
+    private blobStore: BlobStore | null = null;
     private runtime: any = null;
     private _provider: any = null;
     private _catalog: SessionCatalogProvider | null = null;
@@ -76,7 +77,13 @@ export class PilotSwarmWorker {
             waitThreshold: options.waitThreshold ?? 30,
         };
 
-        if (options.blobConnectionString) {
+        // S3 takes priority over Azure Blob; falls back to Azure if only blobConnectionString is set
+        if (options.s3Bucket) {
+            this.blobStore = new S3BlobStore(
+                options.s3Bucket,
+                options.s3Region ?? process.env.AWS_REGION ?? "us-east-1",
+            );
+        } else if (options.blobConnectionString) {
             this.blobStore = new SessionBlobStore(
                 options.blobConnectionString,
                 options.blobContainer ?? "copilot-sessions",

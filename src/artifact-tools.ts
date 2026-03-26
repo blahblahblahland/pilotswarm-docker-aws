@@ -20,7 +20,7 @@
 
 import { defineTool } from "@github/copilot-sdk";
 import type { Tool } from "@github/copilot-sdk";
-import type { SessionBlobStore } from "./blob-store.js";
+import type { BlobStore } from "./blob-store.js";
 
 /**
  * Create artifact tools bound to the given blob store.
@@ -29,7 +29,7 @@ import type { SessionBlobStore } from "./blob-store.js";
  * via the session context (the agent's own session ID).
  */
 export function createArtifactTools(opts: {
-    blobStore: SessionBlobStore;
+    blobStore: BlobStore;
 }): Tool<any>[] {
     const { blobStore } = opts;
 
