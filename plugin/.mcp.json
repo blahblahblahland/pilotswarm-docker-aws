@@ -3,5 +3,38 @@
         "type": "http",
         "url": "https://context7-mcp--upstash.run.tools/mcp",
         "tools": ["resolve-library-id", "query-docs"]
+    },
+
+    "aws-core": {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["awslabs.core-mcp-server@latest"],
+        "env": {
+            "AWS_REGION": "${AWS_REGION}",
+            "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
+            "AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}"
+        }
+    },
+
+    "aws-eks": {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["awslabs.eks-mcp-server@latest"],
+        "env": {
+            "AWS_REGION": "${AWS_REGION}",
+            "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
+            "AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}"
+        }
+    },
+
+    "aws-cdk": {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["awslabs.cdk-mcp-server@latest"],
+        "env": {
+            "AWS_REGION": "${AWS_REGION}",
+            "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
+            "AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}"
+        }
     }
 }

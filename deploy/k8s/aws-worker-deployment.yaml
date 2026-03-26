@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pilotswarm-worker
+  namespace: copilot-runtime
+  labels:
+    app.kubernetes.io/name: pilotswarm
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pilotswarm
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pilotswarm
+        app.kubernetes.io/component: worker
+    spec:
+      # Tolerate AWS EC2 spot instances to reduce cost
+      tolerations:
+        - key: "eks.amazonaws.com/capacityType"
+          operator: "Equal"
+          value: "SPOT"
+          effect: "NoSchedule"
+      containers:
+        - name: worker
+          # Replace with your ECR image URI:
+          # <account-id>.dkr.ecr.<region>.amazonaws.com/pilotswarm-worker:latest
+          image: YOUR_ECR_URI/pilotswarm-worker:latest
+          imagePullPolicy: Always
+          env:
+            # Expose the pod name so workers can use it as a unique node ID
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          # All secrets (DATABASE_URL, AWS_S3_BUCKET, API keys) come from
+          # a Kubernetes Secret named pilotswarm-secrets.
+          # Create it with:
+          #   kubectl create secret generic pilotswarm-secrets \
+          #     --from-env-file=.env \
+          #     -n copilot-runtime
+          envFrom:
+            - secretRef:
+                name: pilotswarm-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+      restartPolicy: Always
