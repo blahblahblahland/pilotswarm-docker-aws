@@ -2633,6 +2633,27 @@ inputBar._updateCursor = function updatePromptCursor(get) {
 
 inputBar._listener = function promptInputListener(ch, key) {
     if (!key) return;
+
+    // When the slash picker is open, delegate navigation keys to it
+    if (slashPicker && slashPicker._pickerKeyHandler) {
+        if (key.name === "up" || key.name === "down" ||
+            key.name === "enter" || key.name === "return" ||
+            key.name === "escape") {
+            slashPicker._pickerKeyHandler(ch, key);
+            return;
+        }
+        // For backspace and character keys, let input handle them first,
+        // then update the picker filter on next tick
+        if (key.name === "backspace" || (ch && !/^[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]$/.test(ch))) {
+            // Fall through to normal input handling, then sync picker
+            setImmediate(() => updateSlashPickerFilter());
+            // Don't return — let input handle the key normally below
+        } else {
+            // Any other non-printable key: dismiss the picker
+            dismissSlashPicker();
+        }
+    }
+
     const value = String(inputBar.getValue() || "");
     const isMetaEnter = (key.meta && (key.name === "enter" || key.name === "return"))
         || key.sequence === "\x1b\r"
@@ -2777,15 +2798,18 @@ const slashCommands = [
 ];
 
 let slashPicker = null;
+let slashPickerFiltered = [...slashCommands];
+let slashPickerSelectedIdx = 0;
 
 function showSlashPicker() {
     if (slashPicker) { slashPicker.detach(); slashPicker = null; }
 
-    let selectedIdx = 0;
+    slashPickerFiltered = [...slashCommands];
+    slashPickerSelectedIdx = 0;
 
-    const renderItems = () => slashCommands.map((c, i) => {
-        const prefix = i === selectedIdx ? "{blue-bg}{white-fg}" : "";
-        const suffix = i === selectedIdx ? "{/white-fg}{/blue-bg}" : "";
+    const renderItems = () => slashPickerFiltered.map((c, i) => {
+        const prefix = i === slashPickerSelectedIdx ? "{blue-bg}{white-fg}" : "";
+        const suffix = i === slashPickerSelectedIdx ? "{/white-fg}{/blue-bg}" : "";
         return `${prefix}  {cyan-fg}${c.name}{/cyan-fg}  ${c.desc}  ${suffix}`;
     });
 
@@ -2794,7 +2818,7 @@ function showSlashPicker() {
         bottom: inputBarHeight(),
         left: 1,
         width: 50,
-        height: slashCommands.length + 2,
+        height: slashPickerFiltered.length + 2,
         border: { type: "line" },
         label: " {bold}commands{/bold} ",
         tags: true,
@@ -2805,7 +2829,9 @@ function showSlashPicker() {
         },
     });
 
-    const updatePicker = () => {
+    const updatePickerContent = () => {
+        if (!slashPicker) return;
+        slashPicker.height = slashPickerFiltered.length + 2;
         slashPicker.setContent(renderItems().join("\n"));
         screen.render();
     };
@@ -2814,13 +2840,19 @@ function showSlashPicker() {
     const pickerKeyHandler = (ch, key) => {
         if (!key) return;
         if (key.name === "up") {
-            selectedIdx = Math.max(0, selectedIdx - 1);
-            updatePicker();
+            slashPickerSelectedIdx = Math.max(0, slashPickerSelectedIdx - 1);
+            updatePickerContent();
         } else if (key.name === "down") {
-            selectedIdx = Math.min(slashCommands.length - 1, selectedIdx + 1);
-            updatePicker();
+            slashPickerSelectedIdx = Math.min(slashPickerFiltered.length - 1, slashPickerSelectedIdx + 1);
+            updatePickerContent();
         } else if (key.name === "return" || key.name === "enter") {
-            const cmd = slashCommands[selectedIdx];
+            if (slashPickerFiltered.length === 0) {
+                dismissSlashPicker();
+                focusInput();
+                screen.render();
+                return;
+            }
+            const cmd = slashPickerFiltered[slashPickerSelectedIdx];
             dismissSlashPicker();
             setInputValue(cmd.name + (cmd.name === "/model" ? " " : ""));
             focusInput();
@@ -2832,15 +2864,39 @@ function showSlashPicker() {
             dismissSlashPicker();
             focusInput();
             screen.render();
-        } else {
-            // Any other key dismisses the picker
-            dismissSlashPicker();
-            screen.render();
         }
+        // Other keys are handled by inputBar._listener (which syncs the filter)
     };
 
     slashPicker._pickerKeyHandler = pickerKeyHandler;
     screen.on("keypress", pickerKeyHandler);
+    screen.render();
+}
+
+function updateSlashPickerFilter() {
+    if (!slashPicker) return;
+    const value = String(inputBar.getValue() || "").toLowerCase();
+    // If input no longer starts with /, dismiss
+    if (!value.startsWith("/")) {
+        dismissSlashPicker();
+        return;
+    }
+    const query = value.slice(1); // strip leading /
+    slashPickerFiltered = slashCommands.filter(c =>
+        c.name.slice(1).startsWith(query) // match after the /
+    );
+    slashPickerSelectedIdx = Math.min(slashPickerSelectedIdx, Math.max(0, slashPickerFiltered.length - 1));
+    if (slashPickerFiltered.length === 0) {
+        dismissSlashPicker();
+        return;
+    }
+    slashPicker.height = slashPickerFiltered.length + 2;
+    const renderItems = () => slashPickerFiltered.map((c, i) => {
+        const prefix = i === slashPickerSelectedIdx ? "{blue-bg}{white-fg}" : "";
+        const suffix = i === slashPickerSelectedIdx ? "{/white-fg}{/blue-bg}" : "";
+        return `${prefix}  {cyan-fg}${c.name}{/cyan-fg}  ${c.desc}  ${suffix}`;
+    });
+    slashPicker.setContent(renderItems().join("\n"));
     screen.render();
 }
 
