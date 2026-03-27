@@ -685,6 +685,7 @@ function showArtifactPicker() {
 const _promptAttachments = []; // [{ path, displayName, sessionId }]
 
 let _fileAttachModal = false;
+let _modelPickerModal = false;
 
 function showFileAttachPrompt() {
     _fileAttachModal = true;
@@ -3063,6 +3064,30 @@ inputBar._updateCursor = function updatePromptCursor(get) {
 
 inputBar._listener = function promptInputListener(ch, key) {
     if (!key) return;
+
+    // Block input when a modal picker (model switcher, file attach) is open
+    if (_modelPickerModal) return;
+
+    // When the slash picker is open, delegate navigation keys to it
+    if (slashPicker && slashPicker._pickerKeyHandler) {
+        if (key.name === "up" || key.name === "down" ||
+            key.name === "enter" || key.name === "return" ||
+            key.name === "escape") {
+            slashPicker._pickerKeyHandler(ch, key);
+            return;
+        }
+        // For backspace and character keys, let input handle them first,
+        // then update the picker filter on next tick
+        if (key.name === "backspace" || (ch && !/^[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]$/.test(ch))) {
+            // Fall through to normal input handling, then sync picker
+            setImmediate(() => updateSlashPickerFilter());
+            // Don't return — let input handle the key normally below
+        } else {
+            // Any other non-printable key: dismiss the picker
+            dismissSlashPicker();
+        }
+    }
+
     const value = String(inputBar.getValue() || "");
     const isMetaEnter = (key.meta && (key.name === "enter" || key.name === "return"))
         || key.sequence === "\x1b\r"
@@ -3207,15 +3232,18 @@ const slashCommands = [
 ];
 
 let slashPicker = null;
+let slashPickerFiltered = [...slashCommands];
+let slashPickerSelectedIdx = 0;
 
 function showSlashPicker() {
     if (slashPicker) { slashPicker.detach(); slashPicker = null; }
 
-    let selectedIdx = 0;
+    slashPickerFiltered = [...slashCommands];
+    slashPickerSelectedIdx = 0;
 
-    const renderItems = () => slashCommands.map((c, i) => {
-        const prefix = i === selectedIdx ? "{blue-bg}{white-fg}" : "";
-        const suffix = i === selectedIdx ? "{/white-fg}{/blue-bg}" : "";
+    const renderItems = () => slashPickerFiltered.map((c, i) => {
+        const prefix = i === slashPickerSelectedIdx ? "{blue-bg}{white-fg}" : "";
+        const suffix = i === slashPickerSelectedIdx ? "{/white-fg}{/blue-bg}" : "";
         return `${prefix}  {cyan-fg}${c.name}{/cyan-fg}  ${c.desc}  ${suffix}`;
     });
 
@@ -3224,7 +3252,7 @@ function showSlashPicker() {
         bottom: inputBarHeight(),
         left: 1,
         width: 50,
-        height: slashCommands.length + 2,
+        height: slashPickerFiltered.length + 2,
         border: { type: "line" },
         label: " {bold}commands{/bold} ",
         tags: true,
@@ -3235,7 +3263,9 @@ function showSlashPicker() {
         },
     });
 
-    const updatePicker = () => {
+    const updatePickerContent = () => {
+        if (!slashPicker) return;
+        slashPicker.height = slashPickerFiltered.length + 2;
         slashPicker.setContent(renderItems().join("\n"));
         screen.render();
     };
@@ -3244,33 +3274,69 @@ function showSlashPicker() {
     const pickerKeyHandler = (ch, key) => {
         if (!key) return;
         if (key.name === "up") {
-            selectedIdx = Math.max(0, selectedIdx - 1);
-            updatePicker();
+            slashPickerSelectedIdx = Math.max(0, slashPickerSelectedIdx - 1);
+            updatePickerContent();
         } else if (key.name === "down") {
-            selectedIdx = Math.min(slashCommands.length - 1, selectedIdx + 1);
-            updatePicker();
+            slashPickerSelectedIdx = Math.min(slashPickerFiltered.length - 1, slashPickerSelectedIdx + 1);
+            updatePickerContent();
         } else if (key.name === "return" || key.name === "enter") {
-            const cmd = slashCommands[selectedIdx];
+            if (slashPickerFiltered.length === 0) {
+                dismissSlashPicker();
+                focusInput();
+                screen.render();
+                return;
+            }
+            const cmd = slashPickerFiltered[slashPickerSelectedIdx];
             dismissSlashPicker();
-            setInputValue(cmd.name + (cmd.name === "/model" ? " " : ""));
-            focusInput();
-            screen.render();
-            if (cmd.name !== "/model") {
+            if (cmd.name === "/model") {
+                // /model needs further input — keep input focused with partial value
+                setInputValue(cmd.name + " ");
+                focusInput();
+                screen.render();
+            } else {
+                // All other commands: execute immediately
+                // Don't focusInput() first — handleInput may show its own picker
+                setInputValue("");
+                screen.render();
                 handleInput(cmd.name);
             }
         } else if (key.name === "escape") {
             dismissSlashPicker();
             focusInput();
             screen.render();
-        } else {
-            // Any other key dismisses the picker
-            dismissSlashPicker();
-            screen.render();
         }
+        // Other keys are handled by inputBar._listener (which syncs the filter)
     };
 
     slashPicker._pickerKeyHandler = pickerKeyHandler;
     screen.on("keypress", pickerKeyHandler);
+    screen.render();
+}
+
+function updateSlashPickerFilter() {
+    if (!slashPicker) return;
+    const value = String(inputBar.getValue() || "").toLowerCase();
+    // If input no longer starts with /, dismiss
+    if (!value.startsWith("/")) {
+        dismissSlashPicker();
+        return;
+    }
+    const query = value.slice(1); // strip leading /
+    slashPickerFiltered = slashCommands.filter(c =>
+        c.name.slice(1).startsWith(query) // match after the /
+    );
+    slashPickerSelectedIdx = Math.min(slashPickerSelectedIdx, Math.max(0, slashPickerFiltered.length - 1));
+    if (slashPickerFiltered.length === 0) {
+        dismissSlashPicker();
+        return;
+    }
+    slashPicker.height = slashPickerFiltered.length + 2;
+    const renderItems = () => slashPickerFiltered.map((c, i) => {
+        const prefix = i === slashPickerSelectedIdx ? "{blue-bg}{white-fg}" : "";
+        const suffix = i === slashPickerSelectedIdx ? "{/white-fg}{/blue-bg}" : "";
+        return `${prefix}  {cyan-fg}${c.name}{/cyan-fg}  ${c.desc}  ${suffix}`;
+    });
+    slashPicker.setContent(renderItems().join("\n"));
     screen.render();
 }
 
@@ -5388,6 +5454,7 @@ orchList.key(["enter"], async () => {
     const idx = orchList.selected;
     if (idx >= 0 && idx < orchIdOrder.length) {
         await switchToOrchestration(orchIdOrder[idx]);
+        focusInput();
         screen.render();
     }
 });
@@ -6997,11 +7064,84 @@ async function ensureOrchestrationStarted(orchId = activeOrchId) {
     await new Promise(r => setTimeout(r, 1000));
 }
 
+// ─── Model picker ────────────────────────────────────────────────
+
+function showModelPicker(dc) {
+    const items = [];
+    const modelMap = new Map();
+    const byProvider = modelProviders.getModelsByProvider();
+    for (const group of byProvider) {
+        items.push(`{bold}{white-fg}── ${group.providerId} (${group.type}) ──{/white-fg}{/bold}`);
+        modelMap.set(items.length - 1, null); // header row
+        for (const m of group.models) {
+            const costTag = m.cost ? ` [${m.cost}]` : "";
+            const activeModel = sessionModels.get(activeOrchId) || currentModel;
+            const marker = m.qualifiedName === activeModel ? " ← current" : "";
+            items.push(`  ${m.qualifiedName}${costTag}${marker}`);
+            modelMap.set(items.length - 1, m.qualifiedName);
+        }
+    }
+
+    const picker = blessed.list({
+        parent: screen,
+        label: " {bold}Switch model{/bold} ",
+        tags: true,
+        top: "center",
+        left: "center",
+        width: Math.min(80, screen.width - 4),
+        height: Math.min(items.length + 2, 20),
+        border: { type: "line" },
+        style: {
+            border: { fg: "cyan" },
+            selected: { bg: "cyan", fg: "black", bold: true },
+            item: { fg: "white" },
+        },
+        items,
+        keys: true,
+        vi: true,
+        scrollable: true,
+    });
+
+    const closeModelPicker = () => {
+        _modelPickerModal = false;
+        picker.detach();
+        focusInput();
+        screen.render();
+    };
+
+    picker.on("select", async (_item, index) => {
+        const qualified = modelMap.get(index);
+        closeModelPicker();
+        if (!qualified) return; // header row
+
+        const cmdId = crypto.randomUUID().slice(0, 8);
+        currentModel = qualified;
+        appendChatRaw(`{yellow-fg}Switching model to ${qualified}...{/yellow-fg}`);
+        screen.render();
+        addPendingCommand(cmdId, "set_model");
+        try {
+            await ensureOrchestrationStarted();
+            await dc.enqueueEvent(activeOrchId, "messages", JSON.stringify({
+                type: "cmd", cmd: "set_model", args: { model: qualified }, id: cmdId,
+            }));
+        } catch (err) {
+            pendingCommands.delete(cmdId);
+            appendChatRaw(`{red-fg}Failed to send command: ${err.message}{/red-fg}`);
+        }
+    });
+
+    picker.key(["escape", "q"], closeModelPicker);
+
+    picker.focus();
+    screen.render();
+}
+
 // ─── Input handling ──────────────────────────────────────────────
 
 async function handleInput(text) {
-    // If file attach modal triggered cancellation, ignore this call
+    // If a modal triggered cancellation, ignore this call
     if (_fileAttachModal) return;
+    if (_modelPickerModal) return;
     // Expand file attachments before trimming — replaces 📎tokens with file content
     const expanded = expandAttachments(text || "");
     const trimmed = expanded.trim();
@@ -7025,51 +7165,43 @@ async function handleInput(text) {
 
         if (cmd === "/models" || cmd === "/model") {
             inputBar.clearValue();
-            focusInput();
 
             const dc = getDc();
             if (!dc) {
                 appendChatRaw("{red-fg}Not connected{/red-fg}");
+                focusInput();
                 screen.render();
                 return;
             }
 
             if (!arg) {
-                // List models
+                // Show interactive model picker
                 if (modelProviders) {
-                    // Use local registry — no need to go through duroxide
-                    appendChatRaw("{bold}Available models:{/bold}");
-                    const byProvider = modelProviders.getModelsByProvider();
-                    for (const group of byProvider) {
-                        appendChatRaw(`  {white-fg}${group.providerId}{/white-fg} {gray-fg}(${group.type}){/gray-fg}`);
-                        for (const m of group.models) {
-                            const marker = m.qualifiedName === currentModel ? " {green-fg}← default{/green-fg}" : "";
-                            const costTag = m.cost ? ` {gray-fg}[${m.cost}]{/gray-fg}` : "";
-                            appendChatRaw(`    {cyan-fg}${m.qualifiedName}{/cyan-fg}${costTag}${marker}`);
-                            if (m.description) {
-                                appendChatRaw(`      {gray-fg}${m.description}{/gray-fg}`);
-                            }
-                        }
-                    }
-                    appendChatRaw("{white-fg}Use /model <provider:model> to switch{/white-fg}");
-                } else {
-                    // Fall back to duroxide command (GitHub Copilot API)
-                    const cmdId = crypto.randomUUID().slice(0, 8);
-                    appendChatRaw("{yellow-fg}Fetching models...{/yellow-fg}");
-                    screen.render();
-                    addPendingCommand(cmdId, "list_models");
-                    try {
-                        await ensureOrchestrationStarted();
-                        await dc.enqueueEvent(activeOrchId, "messages", JSON.stringify({
-                            type: "cmd", cmd: "list_models", id: cmdId,
-                        }));
-                    } catch (err) {
-                        pendingCommands.delete(cmdId);
-                        appendChatRaw(`{red-fg}Failed to send command: ${err.message}{/red-fg}`);
-                    }
+                    // Set modal flag FIRST, then cancel readInput so blessed
+                    // doesn't steal focus back. The flag prevents re-entrant
+                    // handleInput calls from interfering.
+                    _modelPickerModal = true;
+                    inputBar._done(null, null);
+                    setImmediate(() => showModelPicker(dc));
+                    return;
+                }
+                // Fall back to duroxide command (GitHub Copilot API)
+                const cmdId = crypto.randomUUID().slice(0, 8);
+                appendChatRaw("{yellow-fg}Fetching models...{/yellow-fg}");
+                screen.render();
+                addPendingCommand(cmdId, "list_models");
+                try {
+                    await ensureOrchestrationStarted();
+                    await dc.enqueueEvent(activeOrchId, "messages", JSON.stringify({
+                        type: "cmd", cmd: "list_models", id: cmdId,
+                    }));
+                } catch (err) {
+                    pendingCommands.delete(cmdId);
+                    appendChatRaw(`{red-fg}Failed to send command: ${err.message}{/red-fg}`);
                 }
             } else {
                 // Set model — normalize the reference
+                focusInput();
                 let normalizedModel = arg;
                 if (modelProviders) {
                     const normalized = modelProviders.normalize(arg);
@@ -7322,6 +7454,7 @@ async function handleInput(text) {
 inputBar.on("submit", handleInput);
 inputBar.key(["escape"], () => {
     if (_fileAttachModal) return; // Modal is handling escape
+    if (_modelPickerModal) return; // Model picker handles its own escape
     inputBar.clearValue();
     // Exit prompt — focus the sessions pane for navigation
     orchList.focus();
