@@ -1,0 +1,121 @@
+import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ServerContext } from "../context.js";
+
+export function registerSessionResources(server: McpServer, ctx: ServerContext) {
+    // 1. sessions-list — Static resource listing all sessions
+    server.registerResource(
+        "sessions-list",
+        "pilotswarm://sessions",
+        {
+            description: "List all PilotSwarm sessions with status",
+            mimeType: "application/json",
+        },
+        async (uri) => {
+            const sessions = await ctx.mgmt.listSessions();
+            const data = sessions.map((s: any) => ({
+                session_id: s.sessionId,
+                title: s.title,
+                status: s.status,
+                model: s.model,
+                agent_id: s.agentId,
+                is_system: s.isSystem,
+                created_at: s.createdAt,
+                updated_at: s.updatedAt,
+            }));
+            return {
+                contents: [
+                    {
+                        uri: uri.href,
+                        text: JSON.stringify(data, null, 2),
+                        mimeType: "application/json",
+                    },
+                ],
+            };
+        },
+    );
+
+    // 2. session-detail — URI template for a specific session
+    server.registerResource(
+        "session-detail",
+        new ResourceTemplate("pilotswarm://sessions/{id}", {
+            list: async () => {
+                const sessions = await ctx.mgmt.listSessions();
+                return {
+                    resources: sessions.map((s: any) => ({
+                        uri: `pilotswarm://sessions/${s.sessionId}`,
+                        name: s.title ?? s.sessionId,
+                        description: `Session ${s.sessionId} (${s.status})`,
+                        mimeType: "application/json",
+                    })),
+                };
+            },
+        }),
+        {
+            description: "Get detailed info for a specific PilotSwarm session",
+            mimeType: "application/json",
+        },
+        async (uri, variables) => {
+            const id = String(variables.id);
+            const session = await ctx.mgmt.getSession(id);
+            return {
+                contents: [
+                    {
+                        uri: uri.href,
+                        text: JSON.stringify(session, null, 2),
+                        mimeType: "application/json",
+                    },
+                ],
+            };
+        },
+    );
+
+    // 3. session-messages — URI template for session chat history
+    server.registerResource(
+        "session-messages",
+        new ResourceTemplate("pilotswarm://sessions/{id}/messages", {
+            list: async () => {
+                const sessions = await ctx.mgmt.listSessions();
+                return {
+                    resources: sessions.map((s: any) => ({
+                        uri: `pilotswarm://sessions/${s.sessionId}/messages`,
+                        name: `Messages: ${s.title ?? s.sessionId}`,
+                        description: `Chat history for session ${s.sessionId}`,
+                        mimeType: "application/json",
+                    })),
+                };
+            },
+        }),
+        {
+            description: "Get chat history for a specific PilotSwarm session",
+            mimeType: "application/json",
+        },
+        async (uri, variables) => {
+            const id = String(variables.id);
+            try {
+                const raw = await ctx.mgmt.dumpSession(id);
+                const dump = typeof raw === "string" ? JSON.parse(raw) : raw;
+                const events = dump?.events ?? [];
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            text: JSON.stringify(events, null, 2),
+                            mimeType: "application/json",
+                        },
+                    ],
+                };
+            } catch {
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            text: JSON.stringify([], null, 2),
+                            mimeType: "application/json",
+                        },
+                    ],
+                };
+            }
+        },
+    );
+}
