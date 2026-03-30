@@ -77,17 +77,21 @@ export class PilotSwarmWorker {
             waitThreshold: options.waitThreshold ?? 30,
         };
 
-        // S3 takes priority over Azure Blob; falls back to Azure if only blobConnectionString is set
-        if (options.s3Bucket) {
-            this.blobStore = new S3BlobStore(
-                options.s3Bucket,
-                options.s3Region ?? process.env.AWS_REGION ?? "us-east-1",
-            );
+        // S3 takes priority over Azure Blob; falls back to Azure if only blobConnectionString is set.
+        // s3Bucket option takes precedence over AWS_S3_BUCKET env var.
+        const s3Bucket = options.s3Bucket ?? process.env.AWS_S3_BUCKET;
+        if (s3Bucket) {
+            const s3Region = options.s3Region ?? process.env.AWS_REGION ?? "us-east-1";
+            this.blobStore = new S3BlobStore(s3Bucket, s3Region);
+            console.log(`[PilotSwarmWorker] BlobStore: S3 (bucket=${s3Bucket}, region=${s3Region})`);
         } else if (options.blobConnectionString) {
             this.blobStore = new SessionBlobStore(
                 options.blobConnectionString,
                 options.blobContainer ?? "copilot-sessions",
             );
+            console.log(`[PilotSwarmWorker] BlobStore: Azure Blob Storage`);
+        } else {
+            console.log(`[PilotSwarmWorker] BlobStore: none (session dehydration disabled)`);
         }
 
         // Load plugins and merge with direct config — must happen before SessionManager init

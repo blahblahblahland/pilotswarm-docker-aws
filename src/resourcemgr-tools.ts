@@ -146,7 +146,6 @@ export function createResourceManagerTools(opts: {
             try {
                 const detectOrphans = args.detectOrphans !== false;
 
-                // Iterate all blobs via the BlobStore interface
                 const stats = {
                     totalBlobs: 0,
                     totalSizeBytes: 0,
@@ -157,11 +156,11 @@ export function createResourceManagerTools(opts: {
                         artifacts: { count: 0, sizeBytes: 0 },
                         other: { count: 0, sizeBytes: 0 },
                     },
-                    orphanedBlobs: 0,
-                    orphanedSizeMB: 0,
                     sessionIds: new Set<string>(),
                 };
 
+                // Iterate all objects via the storage-agnostic BlobStore interface
+                // (works for both Azure Blob Storage and S3)
                 for await (const obj of blobStore.listAllObjects()) {
                     const size = obj.sizeBytes;
                     const name = obj.name;
@@ -414,7 +413,6 @@ export function createResourceManagerTools(opts: {
                 const blobSessionIds = new Set<string>();
                 for await (const obj of blobStore.listAllObjects()) {
                     const name = obj.name;
-
                     if (name.endsWith(".tar.gz")) {
                         blobSessionIds.add(name.replace(".tar.gz", ""));
                     } else if (name.startsWith("artifacts/")) {
