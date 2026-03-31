@@ -25,6 +25,7 @@
     "tui:remote": "node bin/tui.js remote --env .env.remote",
     "worker": "node --env-file=.env.remote examples/worker.js",
     "test:s3": "node --env-file=.env scripts/test-s3.js",
+    "test:s3:hydration": "node --env-file=.env scripts/test-s3-hydration.js",
     "db:reset": "node --env-file=.env scripts/db-reset.js",
     "postinstall": "node scripts/postinstall.js"
   },
