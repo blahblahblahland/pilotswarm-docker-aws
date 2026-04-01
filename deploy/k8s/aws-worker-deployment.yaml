@@ -28,7 +28,7 @@ spec:
         - name: worker
           # Replace with your ECR image URI:
           # <account-id>.dkr.ecr.<region>.amazonaws.com/pilotswarm-worker:latest
-          image: YOUR_ECR_URI/pilotswarm-worker:latest
+          image: 794267021535.dkr.ecr.us-east-1.amazonaws.com/pilotswarm-worker:latest
           imagePullPolicy: Always
           env:
             # Expose the pod name so workers can use it as a unique node ID
