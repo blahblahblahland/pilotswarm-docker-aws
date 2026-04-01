@@ -13,8 +13,12 @@
  *   LLM_API_VERSION                 — Azure API version (default: "2024-10-21")
  *   COPILOT_MODEL                   — Model name/deployment (default: auto)
  *   LOG_LEVEL                       — Tracing level (default: "info")
- *   AZURE_STORAGE_CONNECTION_STRING — Blob storage for session dehydration
+ *   AZURE_STORAGE_CONNECTION_STRING — Azure Blob Storage for session dehydration (alternative to S3)
  *   AZURE_STORAGE_CONTAINER         — Blob container name (default: "copilot-sessions")
+ *   AWS_S3_BUCKET                   — S3 bucket for session dehydration (takes priority over Azure)
+ *   AWS_REGION                      — AWS region (default: "us-east-1")
+ *   AWS_ACCESS_KEY_ID               — AWS IAM access key
+ *   AWS_SECRET_ACCESS_KEY           — AWS IAM secret key
  *   POD_NAME                        — K8s pod name (default: hostname)
  *   PLUGIN_DIRS                     — Comma-separated plugin directories (default: /app/plugin)
  *
