@@ -442,45 +442,59 @@ export function SessionsShell() {
                 : s.status === "failed" || s.status === "error" ? "text-red-500"
                 : "text-muted-foreground";
               return (
-                <li key={s.sessionId} className="py-0.5">
-                  <button
-                    type="button"
+                <li key={s.sessionId} className="group py-0.5">
+                  <div
                     className={cn(
-                      "w-full rounded-lg border px-3 py-2 text-left transition-colors",
+                      "flex items-center gap-1 rounded-lg border transition-colors",
                       active ? "border-foreground/30 bg-muted/40" : "border-border hover:bg-muted/30",
                     )}
-                    data-session-id={s.sessionId}
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => router.push(`/sessions?sid=${encodeURIComponent(s.sessionId)}`)}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span aria-hidden="true" className={cn("text-xs", iconColor)}>{icon}</span>
-                          <span className="truncate text-sm font-medium">
-                            {s.title || shortId(s.sessionId)}
-                          </span>
-                          {s.isSystem && (
-                            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                              sys
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 px-3 py-2 text-left"
+                      data-session-id={s.sessionId}
+                      aria-current={active ? "page" : undefined}
+                      onClick={() => router.push(`/sessions?sid=${encodeURIComponent(s.sessionId)}`)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span aria-hidden="true" className={cn("text-xs", iconColor)}>{icon}</span>
+                            <span className="truncate text-sm font-medium">
+                              {s.title || shortId(s.sessionId)}
                             </span>
-                          )}
-                          {s.parentSessionId && (
-                            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                              child
-                            </span>
-                          )}
+                            {s.isSystem && (
+                              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                sys
+                              </span>
+                            )}
+                            {s.parentSessionId && (
+                              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                child
+                              </span>
+                            )}
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {s.model ?? "default"} · {s.iterations ?? 0} turns
+                          </div>
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {s.model ?? "default"} · {s.iterations ?? 0} turns
-                        </div>
+                        <Badge tone={statusTone(s.status)}>{s.status}</Badge>
                       </div>
-                      <Badge tone={statusTone(s.status)}>{s.status}</Badge>
-                    </div>
-                    {s.waitReason ? (
-                      <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">{s.waitReason}</div>
-                    ) : null}
-                  </button>
+                      {s.waitReason ? (
+                        <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">{s.waitReason}</div>
+                      ) : null}
+                    </button>
+                    {!s.isSystem && (
+                      <button
+                        type="button"
+                        className="mr-1 shrink-0 rounded p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-red-600/10 hover:text-red-600 group-hover:opacity-100"
+                        aria-label="Delete session"
+                        onClick={() => void deleteSession(s.sessionId)}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}
