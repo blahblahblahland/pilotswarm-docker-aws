@@ -1,0 +1,52 @@
+{
+    "family": "pilotswarm-worker",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512",
+    "executionRoleArn": "arn:aws:iam::794267021535:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::794267021535:role/pilotswarm-task-role",
+    "containerDefinitions": [
+        {
+            "name": "worker",
+            "image": "794267021535.dkr.ecr.us-east-1.amazonaws.com/pilotswarm-worker:latest",
+            "essential": true,
+            "environment": [
+                {
+                    "name": "AWS_REGION",
+                    "value": "us-east-1"
+                }
+            ],
+            "secrets": [
+                {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "arn:aws:ssm:us-east-1:794267021535:parameter/pilotswarm/DATABASE_URL"
+                },
+                {
+                    "name": "GITHUB_TOKEN",
+                    "valueFrom": "arn:aws:ssm:us-east-1:794267021535:parameter/pilotswarm/GITHUB_TOKEN"
+                },
+                {
+                    "name": "AWS_S3_BUCKET",
+                    "valueFrom": "arn:aws:ssm:us-east-1:794267021535:parameter/pilotswarm/AWS_S3_BUCKET"
+                },
+                {
+                    "name": "AWS_ACCESS_KEY_ID",
+                    "valueFrom": "arn:aws:ssm:us-east-1:794267021535:parameter/pilotswarm/AWS_ACCESS_KEY_ID"
+                },
+                {
+                    "name": "AWS_SECRET_ACCESS_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:794267021535:parameter/pilotswarm/AWS_SECRET_ACCESS_KEY"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/pilotswarm-worker",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ]
+}
