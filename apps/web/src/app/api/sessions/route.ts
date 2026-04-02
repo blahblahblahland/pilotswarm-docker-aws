@@ -26,12 +26,17 @@ export const POST = withTiming("POST /api/sessions", async function POST(req: Re
     isRecord(body) && Array.isArray(body.toolNames) && body.toolNames.every(t => typeof t === "string")
       ? (body.toolNames as string[])
       : undefined;
+  const parentSessionId =
+    isRecord(body) && typeof body.parentSessionId === "string"
+      ? body.parentSessionId
+      : undefined;
 
   const client = await getClient();
   const session = await client.createSession({
     ...(model ? { model } : {}),
     ...(systemMessage ? { systemMessage } : {}),
     ...(toolNames ? { toolNames } : {}),
+    ...(parentSessionId ? { parentSessionId } : {}),
   });
 
   // Ensure orchestration exists even before first user message.
