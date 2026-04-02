@@ -24,6 +24,7 @@
  */
 
 import { S3BlobStore } from "../dist/blob-store-s3.js";
+import { check } from "./test-helpers.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -39,24 +40,8 @@ if (!bucket) {
 const SESSION_STATE_DIR = path.join(os.homedir(), ".copilot", "session-state");
 const sessionId = `hydration-test-${Date.now()}`;
 const sessionDir = path.join(SESSION_STATE_DIR, sessionId);
-
 const store = new S3BlobStore(bucket, region);
-
-let passed = 0;
-let failed = 0;
-
-async function check(label, fn) {
-    try {
-        const result = await fn();
-        const suffix = result !== undefined ? ` → ${JSON.stringify(result)}` : "";
-        console.log(`  ✓  ${label}${suffix}`);
-        passed++;
-    } catch (err) {
-        console.error(`  ✗  ${label}`);
-        console.error(`       ${err.message}`);
-        failed++;
-    }
-}
+const c = { passed: 0, failed: 0 };
 
 console.log(`\nS3 Dehydrate/Hydrate Test`);
 console.log(`  bucket  : ${bucket}`);
@@ -65,8 +50,7 @@ console.log(`  session : ${sessionId}`);
 console.log(`  dir     : ${sessionDir}`);
 console.log("");
 
-// ── Setup: create a fake session state directory with test files ──────────────
-
+// Setup: create a fake session state directory with test files
 console.log("  [setup] creating fake session state...");
 fs.mkdirSync(sessionDir, { recursive: true });
 fs.writeFileSync(path.join(sessionDir, "state.json"), JSON.stringify({
@@ -79,79 +63,63 @@ fs.mkdirSync(path.join(sessionDir, "sub"), { recursive: true });
 fs.writeFileSync(path.join(sessionDir, "sub", "nested.txt"), "nested file content");
 console.log("  [setup] done — 3 files in session dir\n");
 
-// ── Test 1: dehydrate ─────────────────────────────────────────────────────────
-
-await check("dehydrate() — tar + upload to S3 + delete local dir", async () => {
-    await store.dehydrate(sessionId, { testRun: true });
-    if (fs.existsSync(sessionDir)) {
-        throw new Error("local session dir still exists after dehydrate (should have been deleted)");
-    }
-    return "local dir deleted";
-});
-
-// ── Test 2: exists ────────────────────────────────────────────────────────────
-
-await check("exists() → true (tar.gz in S3)", async () => {
-    const inS3 = await store.exists(sessionId);
-    if (!inS3) throw new Error("tar.gz not found in S3 after dehydrate");
-    return inS3;
-});
-
-// ── Test 3: hydrate ───────────────────────────────────────────────────────────
-
-await check("hydrate() — download from S3 + restore local dir", async () => {
-    await store.hydrate(sessionId);
-    if (!fs.existsSync(sessionDir)) {
-        throw new Error("session dir not restored after hydrate");
-    }
-    return "local dir restored";
-});
-
-// ── Test 4: verify files came back correctly ──────────────────────────────────
-
-await check("state.json content matches", async () => {
-    const raw = fs.readFileSync(path.join(sessionDir, "state.json"), "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed.sessionId !== sessionId) throw new Error(`sessionId mismatch: ${parsed.sessionId}`);
-    if (!Array.isArray(parsed.messages)) throw new Error("messages field missing");
-    return "ok";
-});
-
-await check("checkpoint.txt content matches", async () => {
-    const content = fs.readFileSync(path.join(sessionDir, "checkpoint.txt"), "utf-8");
-    if (!content.includes(sessionId)) throw new Error(`content mismatch: ${content}`);
-    return "ok";
-});
-
-await check("sub/nested.txt content matches", async () => {
-    const content = fs.readFileSync(path.join(sessionDir, "sub", "nested.txt"), "utf-8");
-    if (content !== "nested file content") throw new Error(`content mismatch: ${content}`);
-    return "ok";
-});
-
-// ── Cleanup ───────────────────────────────────────────────────────────────────
-
-console.log("");
-await check("delete() — remove tar.gz + meta from S3", async () => {
-    await store.delete(sessionId);
-    const stillInS3 = await store.exists(sessionId);
-    if (stillInS3) throw new Error("still exists in S3 after delete");
-    return "cleaned up";
-});
-
-// Remove restored local dir
+// Guarantee S3 + local cleanup regardless of test outcome
 try {
-    fs.rmSync(sessionDir, { recursive: true, force: true });
+    await check("dehydrate() — tar + upload to S3 + delete local dir", async () => {
+        await store.dehydrate(sessionId, { testRun: true });
+        if (fs.existsSync(sessionDir)) throw new Error("local session dir still exists after dehydrate");
+        return "local dir deleted";
+    }, c);
+
+    await check("exists() → true (tar.gz in S3)", async () => {
+        const inS3 = await store.exists(sessionId);
+        if (!inS3) throw new Error("tar.gz not found in S3 after dehydrate");
+        return inS3;
+    }, c);
+
+    await check("hydrate() — download from S3 + restore local dir", async () => {
+        await store.hydrate(sessionId);
+        if (!fs.existsSync(sessionDir)) throw new Error("session dir not restored after hydrate");
+        return "local dir restored";
+    }, c);
+
+    await check("state.json content matches", async () => {
+        const parsed = JSON.parse(fs.readFileSync(path.join(sessionDir, "state.json"), "utf-8"));
+        if (parsed.sessionId !== sessionId) throw new Error(`sessionId mismatch: ${parsed.sessionId}`);
+        if (!Array.isArray(parsed.messages)) throw new Error("messages field missing");
+        return "ok";
+    }, c);
+
+    await check("checkpoint.txt content matches", async () => {
+        const content = fs.readFileSync(path.join(sessionDir, "checkpoint.txt"), "utf-8");
+        if (!content.includes(sessionId)) throw new Error(`content mismatch`);
+        return "ok";
+    }, c);
+
+    await check("sub/nested.txt content matches", async () => {
+        const content = fs.readFileSync(path.join(sessionDir, "sub", "nested.txt"), "utf-8");
+        if (content !== "nested file content") throw new Error(`content mismatch`);
+        return "ok";
+    }, c);
+} finally {
+    // Always clean up S3 and local dir, even if tests failed mid-way
+    console.log("");
+    await check("delete() — remove tar.gz + meta from S3", async () => {
+        await store.delete(sessionId);
+        const stillInS3 = await store.exists(sessionId);
+        if (stillInS3) throw new Error("still exists in S3 after delete");
+        return "cleaned up";
+    }, c);
+
+    try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch {}
     console.log("  [cleanup] local session dir removed");
-} catch {}
-
-// ── Summary ───────────────────────────────────────────────────────────────────
+}
 
 console.log("");
-console.log(`  ${passed} passed, ${failed} failed`);
+console.log(`  ${c.passed} passed, ${c.failed} failed`);
 console.log("");
 
-if (failed > 0) {
+if (c.failed > 0) {
     console.error("Some tests failed. Common causes:");
     console.error("  - 'tar' command not available (required for dehydrate/hydrate)");
     console.error("  - S3 permissions missing (s3:PutObject, s3:GetObject, s3:DeleteObject)");
