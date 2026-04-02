@@ -20,6 +20,10 @@
 
 set -euo pipefail
 
+# Disable MSYS2/Git Bash automatic Unix→Windows path conversion.
+# Without this, paths like /pilotswarm/KEY become C:/Program Files/Git/pilotswarm/KEY
+export MSYS_NO_PATHCONV=1
+
 REGION="us-east-1"
 ACCOUNT_ID="794267021535"
 CLUSTER_NAME="pilotswarm"
