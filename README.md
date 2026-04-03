@@ -138,6 +138,7 @@ Common entry points:
 - [Getting Started](docs/getting-started.md) — install, PostgreSQL, `.env`, and first run
 - [Configuration](docs/configuration.md) — environment variables, blob storage, worker/client options
 - [Deploying to AKS](docs/deploying-to-aks.md) — Kubernetes deployment, scaling, and rolling updates
+- [Deploying to EC2](docs/deploying-to-ec2.md) — worker-only deployment on EC2 with Docker, systemd, Postgres, and S3
 - [Architecture](docs/architecture.md) — internal design and runtime flow
 
 ## Requirements
