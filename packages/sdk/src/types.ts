@@ -24,22 +24,58 @@ type QueuedTurnActionCarrier = {
     queuedActions?: TurnAction[];
 };
 
+export type PromptSource =
+    | "user"
+    | "tool_output"
+    | "retrieved_content"
+    | "sub_agent"
+    | "system_generated";
+
+export type PromptGuardrailAction = "allow" | "allow_guarded" | "block";
+
+export type PromptGuardrailVerdict = "benign" | "suspicious" | "malicious";
+
+export interface PromptGuardrailDecision {
+    source: PromptSource;
+    action: PromptGuardrailAction;
+    reason: string;
+    matchedSignals: string[];
+    detectorVerdict?: PromptGuardrailVerdict;
+    detectorModel?: string;
+}
+
+export interface PromptGuardrailConfig {
+    /** Enables prompt-injection screening and untrusted-content wrapping. Default: true. */
+    enabled?: boolean;
+    /** v1 supports deterministic screening with an optional detector model. */
+    mode?: "rule_based_only" | "rule_based_with_optional_detector";
+    /**
+     * Optional detector model. When set, suspicious prompts can be classified
+     * by a second model before a final allow/guard/block decision is made.
+     */
+    detectorModel?: string;
+}
+
+type PromptGuardrailCarrier = {
+    promptGuardrail?: PromptGuardrailDecision;
+};
+
 export type TurnResult =
-    | ({ type: "completed"; content: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "wait"; seconds: number; reason: string; preserveWorkerAffinity?: boolean; content?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "cron"; action: "set"; intervalSeconds: number; reason: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "cron"; action: "cancel"; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "input_required"; question: string; choices?: string[]; allowFreeform?: boolean; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "spawn_agent"; task: string; model?: string; systemMessage?: string | { mode: "append" | "replace"; content: string }; toolNames?: string[]; agentName?: string; content?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "message_agent"; agentId: string; message: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "check_agents"; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "wait_for_agents"; agentIds: string[]; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "list_sessions"; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "complete_agent"; agentId: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "cancel_agent"; agentId: string; reason?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | ({ type: "delete_agent"; agentId: string; reason?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier)
-    | { type: "cancelled" }
-    | { type: "error"; message: string; events?: CapturedEvent[] };
+    | ({ type: "completed"; content: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "wait"; seconds: number; reason: string; preserveWorkerAffinity?: boolean; content?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "cron"; action: "set"; intervalSeconds: number; reason: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "cron"; action: "cancel"; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "input_required"; question: string; choices?: string[]; allowFreeform?: boolean; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "spawn_agent"; task: string; model?: string; systemMessage?: string | { mode: "append" | "replace"; content: string }; toolNames?: string[]; agentName?: string; content?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "message_agent"; agentId: string; message: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "check_agents"; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "wait_for_agents"; agentIds: string[]; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "list_sessions"; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "complete_agent"; agentId: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "cancel_agent"; agentId: string; reason?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "delete_agent"; agentId: string; reason?: string; events?: CapturedEvent[] } & QueuedTurnActionCarrier & PromptGuardrailCarrier)
+    | ({ type: "cancelled" } & PromptGuardrailCarrier)
+    | ({ type: "error"; message: string; events?: CapturedEvent[] } & PromptGuardrailCarrier);
 
 /** A raw event captured from CopilotSession.on() during a turn. */
 export interface CapturedEvent {
@@ -95,6 +131,8 @@ export interface ManagedSessionConfig extends SerializableSessionConfig {
     hooks?: SessionConfig["hooks"];
     /** Turn timeout in milliseconds. 0 or undefined = no timeout. */
     turnTimeoutMs?: number;
+    /** Prompt-injection guardrail config inherited from the worker. */
+    promptGuardrails?: PromptGuardrailConfig;
 }
 
 // ─── Session Status ──────────────────────────────────────────────
@@ -419,6 +457,12 @@ export interface PilotSwarmWorkerOptions {
      * Default: false. Set to true for headless/minimal deployments.
      */
     disableManagementAgents?: boolean;
+
+    /**
+     * Prompt-injection guardrails applied to user prompts and other untrusted
+     * text before it reaches the model.
+     */
+    promptGuardrails?: PromptGuardrailConfig;
 }
 
 // ─── Client Options ──────────────────────────────────────────────

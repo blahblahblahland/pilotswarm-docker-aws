@@ -22,6 +22,7 @@ import type {
     SessionContextUsage,
 } from "./types.js";
 import { createSessionProxy, createSessionManagerProxy } from "./session-proxy.js";
+import { wrapUntrustedContentBlock } from "./prompt-guardrails.js";
 import { planWaitHandling } from "./wait-affinity.js";
 
 /**
@@ -714,7 +715,11 @@ export function* durableSessionOrchestration_1_0_30(
                                     try {
                                         const doneReason = String(cmdMsg.args?.reason || "Session completed by user");
                                         yield manager.sendToSession(parentSessionId,
-                                            `[CHILD_UPDATE from=${input.sessionId} type=completed iter=${iteration}]\n${doneReason}`);
+                                            `[CHILD_UPDATE from=${input.sessionId} type=completed iter=${iteration}]\n${wrapUntrustedContentBlock({
+                                                source: "sub_agent",
+                                                label: `Child ${input.sessionId} completion`,
+                                                content: doneReason,
+                                            })}`);
                                     } catch (err: any) {
                                         ctx.traceInfo(`[orch] sendToSession(parent) on /done failed: ${err.message} (non-fatal)`);
                                     }
@@ -839,7 +844,12 @@ export function* durableSessionOrchestration_1_0_30(
                             const askBlock = `[ACTIVE FACT REQUESTS]\n` +
                                 `The Facts Manager is seeking corroboration on these topics.\n` +
                                 `If any are relevant to your current task, read the full ask\n` +
-                                `with read_facts and contribute intake evidence if you can.\n${askLines}\n\n` +
+                                `with read_facts and contribute intake evidence if you can.\n` +
+                                `${wrapUntrustedContentBlock({
+                                    source: "retrieved_content",
+                                    label: "Active fact requests",
+                                    content: askLines,
+                                })}\n\n` +
                                 `[FACT NAMESPACE RULES]\n` +
                                 `- You can WRITE to: intake/<topic>/<session-id> (shared observations)\n` +
                                 `- You can READ from: skills/*, asks/* (curated knowledge, open requests)\n` +
@@ -855,7 +865,12 @@ export function* durableSessionOrchestration_1_0_30(
                             ).join("\n");
                             const skillBlock = `[CURATED SKILLS]\n` +
                                 `The following shared skills are available. If one is relevant to your current task,\n` +
-                                `call read_facts(key_pattern="<key>", scope="shared") to load the full instructions before applying.\n\n${skillLines}\n`;
+                                `call read_facts(key_pattern="<key>", scope="shared") to load the full instructions before applying.\n\n` +
+                                `${wrapUntrustedContentBlock({
+                                    source: "retrieved_content",
+                                    label: "Curated skills index",
+                                    content: skillLines,
+                                })}\n`;
                             prompt = skillBlock + prompt;
                         }
                     }
@@ -953,7 +968,11 @@ export function* durableSessionOrchestration_1_0_30(
                 if (parentSessionId) {
                     try {
                         yield manager.sendToSession(parentSessionId,
-                            `[CHILD_UPDATE from=${input.sessionId} type=completed iter=${iteration}]\n${result.content.slice(0, 2000)}`);
+                            `[CHILD_UPDATE from=${input.sessionId} type=completed iter=${iteration}]\n${wrapUntrustedContentBlock({
+                                source: "sub_agent",
+                                label: `Child ${input.sessionId} completion`,
+                                content: result.content.slice(0, 2000),
+                            })}`);
                     } catch (err: any) {
                         ctx.traceInfo(`[orch] sendToSession(parent) failed: ${err.message} (non-fatal)`);
                     }
@@ -1152,7 +1171,11 @@ export function* durableSessionOrchestration_1_0_30(
                             ? result.content.slice(0, 2000)
                             : `[wait: ${result.reason} (${result.seconds}s)]`;
                         yield manager.sendToSession(parentSessionId,
-                            `[CHILD_UPDATE from=${input.sessionId} type=wait iter=${iteration}]\n${notifyContent}`);
+                            `[CHILD_UPDATE from=${input.sessionId} type=wait iter=${iteration}]\n${wrapUntrustedContentBlock({
+                                source: "sub_agent",
+                                label: `Child ${input.sessionId} wait update`,
+                                content: notifyContent,
+                            })}`);
                     } catch (err: any) {
                         ctx.traceInfo(`[orch] sendToSession(parent) wait failed: ${err.message} (non-fatal)`);
                     }
