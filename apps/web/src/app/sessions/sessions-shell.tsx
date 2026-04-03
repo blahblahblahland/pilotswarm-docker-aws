@@ -43,8 +43,9 @@ type CmsEvent = {
 
 type TokenCount = { input: number; output: number };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type RightTab = "activity" | "logs" | "sequence" | "nodes" | "files" | "details";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function statusDot(status: string) {
   switch (status) {
@@ -116,6 +117,312 @@ function BoxPanel({
   );
 }
 
+// ─── Panel Divider (resizable handle) ─────────────────────────────────────────
+
+function PanelDivider({ onResize }: { onResize: (delta: number) => void }) {
+  const dragging = React.useRef(false);
+  const lastX = React.useRef(0);
+
+  const onMouseDown = React.useCallback(
+    (e: React.MouseEvent) => {
+      dragging.current = true;
+      lastX.current = e.clientX;
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging.current) return;
+        const delta = ev.clientX - lastX.current;
+        lastX.current = ev.clientX;
+        onResize(delta);
+      };
+      const onUp = () => {
+        dragging.current = false;
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [onResize],
+  );
+
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      className="w-1 flex-shrink-0 cursor-col-resize bg-zinc-800 hover:bg-zinc-600 active:bg-zinc-500 transition-colors"
+    />
+  );
+}
+
+// ─── Slash Command Menu ────────────────────────────────────────────────────────
+
+const SLASH_COMMANDS = [
+  { command: "/new", description: "New session" },
+  { command: "/model", description: "Switch model" },
+  { command: "/info", description: "Show session details" },
+  { command: "/done", description: "Cancel session" },
+  { command: "/spawn", description: "Spawn child agent" },
+  { command: "/help", description: "Show all commands" },
+];
+
+function SlashCommandMenu({ onSelect, onDismiss }: { onSelect: (cmd: string) => void; onDismiss: () => void }) {
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
+  return (
+    <div className="absolute bottom-full left-0 right-0 mb-1 overflow-hidden rounded border border-zinc-700 bg-zinc-900 shadow-lg">
+      {SLASH_COMMANDS.map(c => (
+        <button
+          key={c.command}
+          type="button"
+          onMouseDown={e => { e.preventDefault(); onSelect(c.command); }}
+          className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-zinc-800"
+        >
+          <span className="font-mono text-cyan-400">{c.command}</span>
+          <span className="text-zinc-500">{c.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Agent Picker Modal ────────────────────────────────────────────────────────
+
+const AGENT_TYPES = [
+  { id: "generic", name: "Generic", description: "Open-ended work, any topic", accent: "#71717a" },
+  { id: "investigator", name: "Investigator", description: "Incident response + root cause analysis", accent: "#f87171" },
+  { id: "deployer", name: "Deployer", description: "Deployment automation + rollback management", accent: "#60a5fa" },
+  { id: "reporter", name: "Reporter", description: "Status reports + summaries", accent: "#34d399" },
+];
+
+function AgentPicker({
+  availableModels,
+  defaultModel,
+  onStart,
+  onCancel,
+}: {
+  availableModels: string[];
+  defaultModel: string;
+  onStart: (model: string) => void;
+  onCancel: () => void;
+}) {
+  const [selectedAgent, setSelectedAgent] = React.useState("generic");
+  const [model, setModel] = React.useState(defaultModel);
+
+  React.useEffect(() => setModel(defaultModel), [defaultModel]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+        <h2 className="mb-1 text-base font-semibold text-zinc-100">New Session</h2>
+        <p className="mb-5 text-xs text-zinc-500">Choose a session type and model to get started.</p>
+
+        <div className="mb-5 grid grid-cols-2 gap-3">
+          {AGENT_TYPES.map(agent => (
+            <button
+              key={agent.id}
+              type="button"
+              onClick={() => setSelectedAgent(agent.id)}
+              className={cn(
+                "rounded-lg border p-3 text-left transition-all",
+                selectedAgent === agent.id
+                  ? "border-zinc-500 bg-zinc-800"
+                  : "border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800/60",
+              )}
+              style={selectedAgent === agent.id ? { borderColor: agent.accent } : {}}
+            >
+              <div className="mb-1 text-sm font-medium text-zinc-100">{agent.name}</div>
+              <div className="text-[11px] text-zinc-500">{agent.description}</div>
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-xs font-medium text-zinc-400">Model</label>
+          <select
+            className="h-8 w-full rounded border border-zinc-700 bg-zinc-800 px-2 font-mono text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            value={model}
+            onChange={e => setModel(e.target.value)}
+          >
+            <option value="">(default)</option>
+            {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded px-4 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onStart(model)}
+            className="rounded border border-zinc-600 bg-zinc-700 px-4 py-1.5 text-xs text-zinc-100 hover:bg-zinc-600"
+          >
+            Start Session
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Inspector Tab Content ─────────────────────────────────────────────────────
+
+function LogsTab({ events }: { events: CmsEvent[] }) {
+  if (!events.length) {
+    return <div className="p-3 text-xs text-zinc-600">No events yet.</div>;
+  }
+  return (
+    <div className="space-y-0.5 p-2 font-mono text-[10px]">
+      {events.map(e => {
+        const t = new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const d = isRecord(e.data) ? e.data : {};
+        const snippet = typeof d.content === "string"
+          ? d.content.slice(0, 60)
+          : typeof d.toolName === "string"
+          ? d.toolName
+          : typeof d.name === "string"
+          ? d.name
+          : "";
+        return (
+          <div key={e.seq} className="flex gap-2 rounded px-1 py-0.5 hover:bg-zinc-800/40">
+            <span className="shrink-0 text-zinc-700">{t}</span>
+            <span className="text-zinc-500">{e.eventType}</span>
+            {snippet && <span className="truncate text-zinc-400">{snippet}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SequenceTab({ events }: { events: CmsEvent[] }) {
+  type Step = { from: string; to: string; label: string; type: "user" | "agent" | "tool" | "system" };
+  const steps = React.useMemo<Step[]>(() => {
+    const result: Step[] = [];
+    for (const e of events) {
+      if (e.eventType === "user.message") {
+        result.push({ from: "User", to: "Agent", label: "send", type: "user" });
+      } else if (e.eventType === "tool.execution_start") {
+        const d = isRecord(e.data) ? e.data : {};
+        const name = typeof d.toolName === "string" ? d.toolName : typeof d.name === "string" ? d.name : "tool";
+        result.push({ from: "Agent", to: "Tool", label: name, type: "tool" });
+      } else if (e.eventType === "tool.execution_complete") {
+        result.push({ from: "Tool", to: "Agent", label: "result", type: "tool" });
+      } else if (e.eventType === "assistant.message") {
+        result.push({ from: "Agent", to: "User", label: "reply", type: "agent" });
+      }
+    }
+    return result;
+  }, [events]);
+
+  if (!steps.length) {
+    return <div className="p-3 text-xs text-zinc-600">No sequence yet.</div>;
+  }
+
+  const colorFor = (t: Step["type"]) => {
+    if (t === "user") return "text-zinc-200";
+    if (t === "agent") return "text-blue-400";
+    if (t === "tool") return "text-yellow-500";
+    return "text-zinc-500";
+  };
+
+  return (
+    <div className="space-y-1 p-3 font-mono text-[10px]">
+      {steps.map((s, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <span className="w-10 shrink-0 text-right text-zinc-500">{s.from}</span>
+          <span className="text-zinc-700">─</span>
+          <span className={cn("shrink-0 truncate", colorFor(s.type))}>{s.label}</span>
+          <span className="text-zinc-700">→</span>
+          <span className="w-10 shrink-0 text-zinc-500">{s.to}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NodesTab({ sessions }: { sessions: SessionView[] }) {
+  const byStatus = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of sessions) {
+      counts[s.status] = (counts[s.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [sessions]);
+
+  const userSessions = sessions.filter(s => !s.isSystem);
+  const systemSessions = sessions.filter(s => s.isSystem);
+
+  return (
+    <div className="space-y-4 p-3 font-mono text-xs">
+      <div>
+        <div className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">Sessions</div>
+        <div className="space-y-1 text-[11px]">
+          <div className="flex justify-between text-zinc-400">
+            <span>User</span><span>{userSessions.length}</span>
+          </div>
+          <div className="flex justify-between text-zinc-400">
+            <span>System</span><span>{systemSessions.length}</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">By Status</div>
+        <div className="space-y-1 text-[11px]">
+          {Object.entries(byStatus).map(([status, count]) => (
+            <div key={status} className="flex justify-between">
+              <span className={statusDot(status)}>{status}</span>
+              <span className="text-zinc-400">{count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilesTab({ sessionId, events }: { sessionId: string; events: CmsEvent[] }) {
+  const artifactEvents = events.filter(e =>
+    e.eventType === "artifact.written" ||
+    e.eventType === "artifact.exported" ||
+    (isRecord(e.data) && typeof (e.data as Record<string, unknown>).artifactId === "string")
+  );
+
+  return (
+    <div className="p-3 space-y-2">
+      <div className="text-[10px] uppercase tracking-widest text-zinc-600 mb-2">Files</div>
+      {artifactEvents.length ? (
+        artifactEvents.map(e => {
+          const d = isRecord(e.data) ? e.data : {};
+          const name = typeof d.name === "string" ? d.name : typeof d.artifactId === "string" ? d.artifactId : "artifact";
+          return (
+            <div key={e.seq} className="rounded border border-zinc-800 bg-zinc-900/40 px-2 py-1.5 text-xs">
+              <div className="font-mono text-zinc-300 truncate">{name}</div>
+              <div className="text-[10px] text-zinc-600 mt-0.5">{e.eventType}</div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="text-xs text-zinc-600">No files yet.</div>
+      )}
+      {sessionId && (
+        <a
+          href={`/api/sessions/${sessionId}/dump`}
+          className="block mt-3 text-[10px] text-zinc-500 underline underline-offset-2 hover:text-zinc-300"
+        >
+          ↓ Download full transcript
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Shell ───────────────────────────────────────────────────────────────
 
 export function SessionsShell() {
@@ -142,6 +449,17 @@ export function SessionsShell() {
   const dailyTokensRef = React.useRef<Map<string, TokenCount>>(new Map());
   const [dailyTotal, setDailyTotal] = React.useState<TokenCount>({ input: 0, output: 0 });
 
+  // Panel widths (resizable)
+  const [sidebarWidth, setSidebarWidth] = React.useState(260);
+  const [inspectorWidth, setInspectorWidth] = React.useState(300);
+
+  // Right panel tab
+  const [rightTab, setRightTab] = React.useState<RightTab>("activity");
+
+  // Agent picker + slash commands
+  const [showAgentPicker, setShowAgentPicker] = React.useState(false);
+  const [showSlash, setShowSlash] = React.useState(false);
+
   const chatBottomRef = React.useRef<HTMLDivElement | null>(null);
 
   // ── Derived ──────────────────────────────────────────────────────────────
@@ -161,18 +479,9 @@ export function SessionsShell() {
     [events],
   );
 
-  // User sessions: not system, and either no parent or parent is also user
-  const userSessions = React.useMemo(
-    () => sessions.filter(s => !s.isSystem),
-    [sessions],
-  );
+  const userSessions = React.useMemo(() => sessions.filter(s => !s.isSystem), [sessions]);
+  const systemSessions = React.useMemo(() => sessions.filter(s => s.isSystem), [sessions]);
 
-  const systemSessions = React.useMemo(
-    () => sessions.filter(s => s.isSystem),
-    [sessions],
-  );
-
-  // Root user sessions: no parent, or parent is a system session
   const userRootSessions = React.useMemo(() => {
     const userIds = new Set(userSessions.map(s => s.sessionId));
     return userSessions.filter(s => !s.parentSessionId || !userIds.has(s.parentSessionId));
@@ -188,13 +497,11 @@ export function SessionsShell() {
 
   // ── Effects ──────────────────────────────────────────────────────────────
 
-  // Auto-select first session
   React.useEffect(() => {
     if (selectedId || filteredUserRoots.length === 0) return;
     router.replace(`/sessions?sid=${encodeURIComponent(filteredUserRoots[0]!.sessionId)}`);
   }, [filteredUserRoots, selectedId, router]);
 
-  // Load models once
   React.useEffect(() => {
     fetch("/api/models", { cache: "no-store" })
       .then(r => r.json())
@@ -216,7 +523,6 @@ export function SessionsShell() {
       .catch(() => {});
   }, []);
 
-  // Initial load
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -234,7 +540,6 @@ export function SessionsShell() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load events when selection changes
   React.useEffect(() => {
     let cancelled = false;
     if (!selectedId) {
@@ -249,7 +554,6 @@ export function SessionsShell() {
         if (cancelled) return;
         setEvents(evts);
         lastSeqRef.current = evts.length ? evts[evts.length - 1]!.seq : 0;
-        // Accumulate daily tokens
         const t = extractTokens(todayEvents(evts));
         dailyTokensRef.current.set(selectedId, t);
         recomputeDailyTotal();
@@ -260,7 +564,6 @@ export function SessionsShell() {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  // SSE stream
   React.useEffect(() => {
     if (!selectedId) return;
     const url = new URL(`/api/sessions/${selectedId}/stream`, window.location.origin);
@@ -310,7 +613,6 @@ export function SessionsShell() {
     return () => es.close();
   }, [selectedId]);
 
-  // Auto-scroll chat
   React.useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatEvents.length]);
@@ -320,8 +622,7 @@ export function SessionsShell() {
   function recomputeDailyTotal() {
     let input = 0, output = 0;
     for (const t of dailyTokensRef.current.values()) {
-      input += t.input;
-      output += t.output;
+      input += t.input; output += t.output;
     }
     setDailyTotal({ input, output });
   }
@@ -337,19 +638,20 @@ export function SessionsShell() {
   async function loadEvents(sessionId: string, afterSeq?: number) {
     const url = new URL(`/api/sessions/${sessionId}/events`, window.location.origin);
     if (afterSeq) url.searchParams.set("afterSeq", String(afterSeq));
-    url.searchParams.set("limit", "200");
+    url.searchParams.set("limit", "50");
     const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) throw new Error(`events_http_${res.status}`);
     const json = (await res.json()) as { events: CmsEvent[] };
     return json.events ?? [];
   }
 
-  async function createSession() {
+  async function createSession(model?: string) {
     setError(null);
+    const m = model ?? globalModel;
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(globalModel ? { model: globalModel } : {}),
+      body: JSON.stringify(m ? { model: m } : {}),
     });
     if (!res.ok) throw new Error(`create_http_${res.status}`);
     const json = (await res.json()) as { sessionId: string };
@@ -411,6 +713,23 @@ export function SessionsShell() {
   async function sendMessage() {
     if (!selectedId || !message.trim()) return;
     const trimmed = message.trim();
+
+    // Handle slash commands
+    if (trimmed === "/new") { setMessage(""); void createSession(); return; }
+    if (trimmed === "/done") { setMessage(""); void cancelSession(selectedId); return; }
+    if (trimmed === "/info") { setMessage(""); setRightTab("details"); return; }
+    if (trimmed === "/spawn") { setMessage(""); return; } // opens spawn dialog — handled via button
+    if (trimmed.startsWith("/model ")) {
+      const m = trimmed.slice(7).trim();
+      if (m) setGlobalModel(m);
+      setMessage("");
+      return;
+    }
+    if (trimmed === "/help") {
+      setMessage(SLASH_COMMANDS.map(c => `${c.command} — ${c.description}`).join("\n"));
+      return;
+    }
+
     setSending(true);
     setError(null);
     setMessage("");
@@ -443,6 +762,15 @@ export function SessionsShell() {
 
   const currentStatus = liveStatus ?? selected?.status ?? "";
 
+  const RIGHT_TABS: { key: RightTab; label: string }[] = [
+    { key: "activity", label: "Activity" },
+    { key: "logs", label: "Logs" },
+    { key: "sequence", label: "Seq" },
+    { key: "nodes", label: "Nodes" },
+    { key: "files", label: "Files" },
+    { key: "details", label: "Details" },
+  ];
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
 
@@ -453,7 +781,6 @@ export function SessionsShell() {
           <span className="hidden text-xs text-zinc-600 sm:block">Durable AI Orchestration</span>
         </div>
 
-        {/* Global model selector */}
         <div className="flex items-center gap-2">
           <label className="text-xs text-zinc-500" htmlFor="global-model">Model</label>
           <select
@@ -463,13 +790,10 @@ export function SessionsShell() {
             onChange={e => setGlobalModel(e.target.value)}
           >
             <option value="">(default)</option>
-            {availableModels.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
+            {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
 
-        {/* Daily token counter */}
         <div className="flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2.5 py-1 font-mono text-xs">
           <span className="text-zinc-500">tokens today</span>
           <span className="text-zinc-300">
@@ -482,11 +806,13 @@ export function SessionsShell() {
       </header>
 
       {/* ── Body ── */}
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_1fr_300px]">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
 
         {/* ── Left: Sessions sidebar ── */}
-        <aside className="flex flex-col overflow-hidden border-r border-zinc-800">
-          {/* Search */}
+        <aside
+          style={{ width: sidebarWidth, minWidth: 180 }}
+          className="flex flex-shrink-0 flex-col overflow-hidden border-r border-zinc-800"
+        >
           <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
             <input
               placeholder="Search sessions…"
@@ -496,20 +822,12 @@ export function SessionsShell() {
             />
           </div>
 
-          {/* Session tree */}
           <div className="flex-1 overflow-auto py-1 font-mono text-xs">
             {loading ? (
               <div className="px-4 py-3 text-zinc-600">Loading…</div>
             ) : (
               <>
-                {/* My Chats */}
-                <SectionHeader
-                  label="My Chats"
-                  count={filteredUserRoots.length}
-                  collapsed={false}
-                  onToggle={() => {}}
-                  alwaysOpen
-                />
+                <SectionHeader label="My Chats" count={filteredUserRoots.length} collapsed={false} onToggle={() => {}} alwaysOpen />
                 {filteredUserRoots.length === 0 ? (
                   <div className="px-4 py-2 text-zinc-600">No chats yet.</div>
                 ) : (
@@ -525,8 +843,6 @@ export function SessionsShell() {
                     />
                   ))
                 )}
-
-                {/* System */}
                 <div className="mt-2">
                   <SectionHeader
                     label="System"
@@ -550,11 +866,10 @@ export function SessionsShell() {
             )}
           </div>
 
-          {/* New chat button */}
           <div className="shrink-0 border-t border-zinc-800 px-3 py-2.5">
             <button
               type="button"
-              onClick={() => void createSession()}
+              onClick={() => setShowAgentPicker(true)}
               className="w-full rounded border border-zinc-700 bg-zinc-800/60 py-1.5 font-mono text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-700/60 hover:text-zinc-100"
             >
               + New Chat
@@ -562,8 +877,10 @@ export function SessionsShell() {
           </div>
         </aside>
 
+        <PanelDivider onResize={delta => setSidebarWidth(w => Math.max(180, w + delta))} />
+
         {/* ── Center: Chat ── */}
-        <main className="flex min-h-0 flex-col overflow-hidden border-r border-zinc-800">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden border-r border-zinc-800">
           <BoxPanel
             label={selectedId ? `Chat [${shortId(selectedId)}]` : "Chat"}
             className="flex-1 overflow-hidden border-0 border-b border-zinc-800 rounded-none"
@@ -620,17 +937,36 @@ export function SessionsShell() {
           </BoxPanel>
 
           {/* Input */}
-          <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
+          <div className="relative shrink-0 border-t border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
+            {showSlash && (
+              <SlashCommandMenu
+                onSelect={cmd => { setMessage(cmd + " "); setShowSlash(false); }}
+                onDismiss={() => setShowSlash(false)}
+              />
+            )}
             <form
               className="flex gap-2"
-              onSubmit={e => { e.preventDefault(); void sendMessage(); }}
+              onSubmit={e => { e.preventDefault(); setShowSlash(false); void sendMessage(); }}
             >
-              <input
-                placeholder={selectedId ? "Send a message…" : "Select a chat to send messages"}
+              <textarea
+                rows={1}
+                placeholder={selectedId ? "Message PilotSwarm… (type / for commands)" : "Select a chat to send messages"}
                 value={message}
-                onChange={e => setMessage(e.target.value)}
+                onChange={e => {
+                  const v = e.target.value;
+                  setMessage(v);
+                  setShowSlash(v === "/");
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    setShowSlash(false);
+                    void sendMessage();
+                  }
+                  if (e.key === "Escape") setShowSlash(false);
+                }}
                 disabled={!selectedId || sending}
-                className="flex-1 rounded border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 font-mono text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-40"
+                className="flex-1 resize-none rounded border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 font-mono text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-40"
               />
               <button
                 type="submit"
@@ -643,77 +979,107 @@ export function SessionsShell() {
           </div>
         </main>
 
-        {/* ── Right: Activity + Details ── */}
-        <div className="flex min-h-0 flex-col overflow-hidden">
-          {/* Activity box (top ~55%) */}
-          <BoxPanel label="Activity" className="flex-[55] overflow-hidden border-0 border-b border-zinc-800 rounded-none">
-            <div className="flex-1 overflow-auto px-3 py-2 space-y-1">
-              {activityEvents.length ? (
-                activityEvents.map(e => <ActivityRow key={`${e.seq}`} evt={e} />)
-              ) : (
-                <div className="text-xs text-zinc-600">No activity yet.</div>
-              )}
-            </div>
-          </BoxPanel>
+        <PanelDivider onResize={delta => setInspectorWidth(w => Math.max(220, w - delta))} />
 
-          {/* Details box (bottom ~45%) */}
-          <BoxPanel label="Details" className="flex-[45] overflow-hidden border-0 rounded-none">
-            <div className="flex-1 overflow-auto px-3 py-2">
-              {selected ? (
-                <dl className="space-y-1.5 font-mono text-xs">
-                  <DetailRow label="id" value={shortId(selected.sessionId)} mono />
-                  <DetailRow label="model" value={selected.model ?? (globalModel || "default")} />
-                  <DetailRow
-                    label="status"
-                    value={
-                      <span className={statusDot(liveStatus ?? selected.status)}>
-                        {liveStatus ?? selected.status}
-                      </span>
-                    }
-                  />
-                  <DetailRow label="turns" value={String(selected.iterations ?? 0)} />
-                  {selected.parentSessionId && (
+        {/* ── Right: Tabbed Inspector ── */}
+        <div
+          style={{ width: inspectorWidth, minWidth: 220 }}
+          className="flex flex-shrink-0 flex-col overflow-hidden"
+        >
+          {/* Tab bar */}
+          <div className="flex shrink-0 border-b border-zinc-800 bg-zinc-900/60">
+            {RIGHT_TABS.map(t => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setRightTab(t.key)}
+                className={cn(
+                  "px-2.5 py-2 text-[10px] font-mono transition-colors",
+                  rightTab === t.key
+                    ? "border-b border-zinc-300 text-zinc-200"
+                    : "text-zinc-600 hover:text-zinc-400",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-auto">
+            {rightTab === "activity" && (
+              activityEvents.length ? (
+                <div className="space-y-1 p-2">
+                  {activityEvents.map(e => <ActivityRow key={`${e.seq}`} evt={e} />)}
+                </div>
+              ) : (
+                <div className="p-3 text-xs text-zinc-600">No activity yet.</div>
+              )
+            )}
+            {rightTab === "logs" && <LogsTab events={events} />}
+            {rightTab === "sequence" && <SequenceTab events={events} />}
+            {rightTab === "nodes" && <NodesTab sessions={sessions} />}
+            {rightTab === "files" && <FilesTab sessionId={selectedId} events={events} />}
+            {rightTab === "details" && (
+              <div className="p-3">
+                {selected ? (
+                  <dl className="space-y-1.5 font-mono text-xs">
+                    <DetailRow label="id" value={shortId(selected.sessionId)} mono />
+                    <DetailRow label="model" value={selected.model ?? (globalModel || "default")} />
                     <DetailRow
-                      label="parent"
+                      label="status"
                       value={
-                        <button
-                          type="button"
-                          className="underline underline-offset-2 hover:text-zinc-200"
-                          onClick={() => router.push(`/sessions?sid=${encodeURIComponent(selected.parentSessionId!)}`)}
-                        >
-                          {shortId(selected.parentSessionId)}
-                        </button>
+                        <span className={statusDot(liveStatus ?? selected.status)}>
+                          {liveStatus ?? selected.status}
+                        </span>
                       }
                     />
-                  )}
-                  {selected.waitReason && (
-                    <div className="mt-2 rounded border border-zinc-700 bg-zinc-800/40 p-2">
-                      <div className="mb-1 text-[10px] text-zinc-500">wait reason</div>
-                      <div className="text-zinc-300">{selected.waitReason}</div>
-                    </div>
-                  )}
-                  {selected.error && (
-                    <div className="mt-2 rounded border border-red-900/50 bg-red-900/20 p-2">
-                      <div className="mb-1 text-[10px] text-red-500">error</div>
-                      <div className="text-red-400">{selected.error}</div>
-                    </div>
-                  )}
-                  <div className="pt-1">
-                    <a
-                      href={`/api/sessions/${selected.sessionId}/dump`}
-                      className="text-[10px] text-zinc-500 underline underline-offset-2 hover:text-zinc-300"
-                    >
-                      download transcript
-                    </a>
-                  </div>
-                </dl>
-              ) : (
-                <div className="text-xs text-zinc-600">Select a chat to see details.</div>
-              )}
-            </div>
-          </BoxPanel>
+                    <DetailRow label="turns" value={String(selected.iterations ?? 0)} />
+                    {selected.parentSessionId && (
+                      <DetailRow
+                        label="parent"
+                        value={
+                          <button
+                            type="button"
+                            className="underline underline-offset-2 hover:text-zinc-200"
+                            onClick={() => router.push(`/sessions?sid=${encodeURIComponent(selected.parentSessionId!)}`)}
+                          >
+                            {shortId(selected.parentSessionId)}
+                          </button>
+                        }
+                      />
+                    )}
+                    {selected.waitReason && (
+                      <div className="mt-2 rounded border border-zinc-700 bg-zinc-800/40 p-2">
+                        <div className="mb-1 text-[10px] text-zinc-500">wait reason</div>
+                        <div className="text-zinc-300">{selected.waitReason}</div>
+                      </div>
+                    )}
+                    {selected.error && (
+                      <div className="mt-2 rounded border border-red-900/50 bg-red-900/20 p-2">
+                        <div className="mb-1 text-[10px] text-red-500">error</div>
+                        <div className="text-red-400">{selected.error}</div>
+                      </div>
+                    )}
+                  </dl>
+                ) : (
+                  <div className="text-xs text-zinc-600">Select a chat to see details.</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Agent picker overlay */}
+      {showAgentPicker && (
+        <AgentPicker
+          availableModels={availableModels}
+          defaultModel={globalModel}
+          onStart={model => { setShowAgentPicker(false); void createSession(model); }}
+          onCancel={() => setShowAgentPicker(false)}
+        />
+      )}
     </div>
   );
 }
@@ -721,17 +1087,9 @@ export function SessionsShell() {
 // ─── Session Tree ──────────────────────────────────────────────────────────────
 
 function SectionHeader({
-  label,
-  count,
-  collapsed,
-  onToggle,
-  alwaysOpen,
+  label, count, collapsed, onToggle, alwaysOpen,
 }: {
-  label: string;
-  count: number;
-  collapsed: boolean;
-  onToggle: () => void;
-  alwaysOpen?: boolean;
+  label: string; count: number; collapsed: boolean; onToggle: () => void; alwaysOpen?: boolean;
 }) {
   return (
     <button
@@ -750,19 +1108,10 @@ function SectionHeader({
 }
 
 function SessionTreeNode({
-  session,
-  depth,
-  allSessions,
-  selectedId,
-  onSelect,
-  onDelete,
+  session, depth, allSessions, selectedId, onSelect, onDelete,
 }: {
-  session: SessionView;
-  depth: number;
-  allSessions: SessionView[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  onDelete: (id: string) => Promise<void>;
+  session: SessionView; depth: number; allSessions: SessionView[];
+  selectedId: string; onSelect: (id: string) => void; onDelete: (id: string) => Promise<void>;
 }) {
   const children = allSessions.filter(s => s.parentSessionId === session.sessionId);
   const [expanded, setExpanded] = React.useState(true);
@@ -777,7 +1126,6 @@ function SessionTreeNode({
           active ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
         )}
       >
-        {/* Expand toggle or spacer */}
         <span className="w-3 shrink-0 text-center text-zinc-600">
           {children.length > 0 ? (
             <button type="button" onClick={() => setExpanded(v => !v)} className="hover:text-zinc-400">
@@ -785,8 +1133,6 @@ function SessionTreeNode({
             </button>
           ) : depth > 0 ? "└" : null}
         </span>
-
-        {/* Session button */}
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-left"
@@ -797,8 +1143,6 @@ function SessionTreeNode({
             {session.title || shortId(session.sessionId)}
           </span>
         </button>
-
-        {/* Delete button (hover) */}
         {!session.isSystem && (
           <button
             type="button"
@@ -810,8 +1154,6 @@ function SessionTreeNode({
           </button>
         )}
       </div>
-
-      {/* Children */}
       {expanded && children.map(child => (
         <SessionTreeNode
           key={child.sessionId}
@@ -827,7 +1169,7 @@ function SessionTreeNode({
   );
 }
 
-// ─── Detail row helper ─────────────────────────────────────────────────────────
+// ─── Detail row ────────────────────────────────────────────────────────────────
 
 function DetailRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
@@ -838,7 +1180,7 @@ function DetailRow({ label, value, mono }: { label: string; value: React.ReactNo
   );
 }
 
-// ─── Chat message row ──────────────────────────────────────────────────────────
+// ─── Chat rows ─────────────────────────────────────────────────────────────────
 
 function ChatRow({ evt }: { evt: CmsEvent }) {
   const t = new Date(evt.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -887,7 +1229,7 @@ function ChatRow({ evt }: { evt: CmsEvent }) {
   return null;
 }
 
-// ─── Activity event row ────────────────────────────────────────────────────────
+// ─── Activity row ──────────────────────────────────────────────────────────────
 
 function ActivityRow({ evt }: { evt: CmsEvent }) {
   const t = new Date(evt.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -916,15 +1258,10 @@ function ActivityRow({ evt }: { evt: CmsEvent }) {
 // ─── Dialogs ───────────────────────────────────────────────────────────────────
 
 function SpawnAgentButton({
-  parentSessionId,
-  onSpawn,
-  availableModels,
-  defaultModel,
+  parentSessionId, onSpawn, availableModels, defaultModel,
 }: {
-  parentSessionId: string;
-  onSpawn: (task: string, model?: string) => Promise<void>;
-  availableModels: string[];
-  defaultModel: string;
+  parentSessionId: string; onSpawn: (task: string, model?: string) => Promise<void>;
+  availableModels: string[]; defaultModel: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [task, setTask] = React.useState("");
@@ -1003,9 +1340,7 @@ function RenameButton({ initialTitle, onRename, disabled }: { initialTitle: stri
         </button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rename session</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Rename session</DialogTitle></DialogHeader>
         <Input value={title} onChange={e => setTitle(e.target.value)} />
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
