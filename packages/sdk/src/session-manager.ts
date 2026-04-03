@@ -1,7 +1,12 @@
 import { CopilotClient, type CopilotSession, type Tool } from "@github/copilot-sdk";
 import { ManagedSession } from "./managed-session.js";
 import type { SessionStateStore } from "./session-store.js";
-import { SESSION_STATE_MISSING_PREFIX, type ManagedSessionConfig, type SerializableSessionConfig } from "./types.js";
+import {
+    SESSION_STATE_MISSING_PREFIX,
+    type ManagedSessionConfig,
+    type PromptGuardrailConfig,
+    type SerializableSessionConfig,
+} from "./types.js";
 import type { ModelProviderRegistry } from "./model-providers.js";
 import { createFactTools } from "./facts-tools.js";
 import type { FactStore } from "./facts-store.js";
@@ -40,6 +45,8 @@ export interface WorkerDefaults {
     modelProviders?: ModelProviderRegistry;
     /** Turn timeout in milliseconds. 0 or undefined = no timeout. */
     turnTimeoutMs?: number;
+    /** Prompt-injection guardrails inherited by all sessions on this worker. */
+    promptGuardrails?: PromptGuardrailConfig;
 }
 
 /**
@@ -89,6 +96,10 @@ export class SessionManager {
     /** Get a human-readable model summary for LLM tool consumption. */
     getModelSummary(): string | undefined {
         return this.workerDefaults.modelProviders?.getModelSummaryForLLM();
+    }
+
+    getPromptGuardrails(): PromptGuardrailConfig | undefined {
+        return this.workerDefaults.promptGuardrails;
     }
 
     /**
@@ -143,6 +154,40 @@ export class SessionManager {
         const resolved = registry.resolve(registry.defaultModel);
         if (!resolved?.sdkProvider) return undefined;
         return { modelName: resolved.modelName, sdkProvider: resolved.sdkProvider };
+    }
+
+    /**
+     * Resolve a concrete model/provider tuple for a one-shot SDK session.
+     * Used by secondary utilities such as prompt-guardrail detector turns.
+     */
+    resolveSessionModelOptions(model?: string): { modelName: string; sdkProvider?: any; githubToken?: string } | undefined {
+        const registry = this.workerDefaults.modelProviders;
+        if (registry) {
+            const normalized = this.normalizeModelRef(model);
+            if (!normalized) return undefined;
+            const resolved = registry.resolve(normalized);
+            if (!resolved) return undefined;
+            return {
+                modelName: resolved.modelName,
+                ...(resolved.sdkProvider ? { sdkProvider: resolved.sdkProvider } : {}),
+                ...(resolved.githubToken ? { githubToken: resolved.githubToken } : {}),
+            };
+        }
+
+        if (model && this.workerDefaults.provider) {
+            const resolvedProvider = this._resolveProviderConfig(model);
+            return {
+                modelName: model,
+                ...(resolvedProvider.provider ? { sdkProvider: resolvedProvider.provider } : {}),
+                ...(this.githubToken ? { githubToken: this.githubToken } : {}),
+            };
+        }
+
+        if (model && this.githubToken) {
+            return { modelName: model, githubToken: this.githubToken };
+        }
+
+        return undefined;
     }
 
     /** Ensure the CopilotClient is started. */
@@ -223,6 +268,7 @@ export class SessionManager {
             tools: resolvedTools.length > 0 ? resolvedTools : undefined,
             hooks: storedConfig?.hooks,
             turnTimeoutMs: this.workerDefaults.turnTimeoutMs,
+            promptGuardrails: storedConfig?.promptGuardrails ?? this.workerDefaults.promptGuardrails,
         };
 
         const client = await this.ensureClient();

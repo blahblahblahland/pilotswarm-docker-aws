@@ -1,5 +1,6 @@
 import { defineTool, type Tool, type CopilotSession } from "@github/copilot-sdk";
 import type { TurnAction, TurnResult, TurnOptions, ManagedSessionConfig, CapturedEvent } from "./types.js";
+import { wrapToolOutputForModel } from "./prompt-guardrails.js";
 
 /**
  * Mutable state shared between the wait tool handler and runTurn().
@@ -740,9 +741,10 @@ export class ManagedSession {
             })
             .map(t => ({
                 ...t,
-                handler: (args: any, invocation: any) => {
+                handler: async (args: any, invocation: any) => {
                     const augmented = { ...invocation, durableSessionId };
-                    return (t as any).handler(args, augmented);
+                    const result = await (t as any).handler(args, augmented);
+                    return wrapToolOutputForModel((t as any).name, result, this.config.promptGuardrails);
                 },
             }));
 

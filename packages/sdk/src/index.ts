@@ -61,6 +61,11 @@ export type {
     OrchestrationInput,
     SubAgentEntry,
     SessionPolicy,
+    PromptSource,
+    PromptGuardrailAction,
+    PromptGuardrailVerdict,
+    PromptGuardrailDecision,
+    PromptGuardrailConfig,
 } from "./types.js";
 
 // Skills loader
@@ -79,6 +84,17 @@ export { loadModelProviders, ModelProviderRegistry } from "./model-providers.js"
 export type { ModelEntry, ModelDescriptor, ModelProviderConfig, ModelProvidersFile, ResolvedProvider } from "./model-providers.js";
 export { composeSystemPrompt, extractPromptContent, mergePromptSections } from "./prompt-layering.js";
 export type { PromptLayeringKind } from "./prompt-layering.js";
+export {
+    buildGuardedTurnPrompt,
+    buildPromptGuardrailRefusal,
+    containsUnsafeAuthorityClaim,
+    evaluatePromptGuardrails,
+    isHighRiskTurnResult,
+    normalizePromptGuardrailConfig,
+    shouldRunPromptGuardrailDetector,
+    wrapToolOutputForModel,
+    wrapUntrustedContentBlock,
+} from "./prompt-guardrails.js";
 
 // Debug utilities
 export { SessionDumper } from "./session-dumper.js";
