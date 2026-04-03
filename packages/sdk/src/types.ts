@@ -331,11 +331,17 @@ export interface PilotSwarmWorkerOptions {
     maxSessionsPerRuntime?: number;
     sessionIdleTimeoutMs?: number;
     workerNodeId?: string;
-    /** Azure Blob Storage connection string for the built-in blob-backed session store. */
-    blobConnectionString?: string;
-    /** Blob container name for the built-in blob-backed session store. */
-    blobContainer?: string;
-    /** Optional session state store. When set, enables durable session dehydration without Azure Blob Storage. */
+    /** AWS S3 bucket name for the built-in remote session store. */
+    awsS3BucketName?: string;
+    /** AWS region for the built-in remote session store. */
+    awsS3Region?: string;
+    /** Optional explicit AWS access key ID for the built-in S3 session store. */
+    awsAccessKeyId?: string;
+    /** Optional explicit AWS secret access key for the built-in S3 session store. */
+    awsSecretAccessKey?: string;
+    /** Optional S3-compatible endpoint override (for custom endpoints). */
+    awsS3Endpoint?: string;
+    /** Optional session state store. When set, enables durable session dehydration without the built-in S3 backend. */
     sessionStore?: SessionStateStore;
 
     /**

@@ -472,14 +472,23 @@ const _registeredArtifacts = new Set();
 const MAX_ARTIFACT_REGISTRY = 500;
 
 /** TUI-level artifact store for on-demand downloads. Created lazily.
- *  Uses Azure Blob when configured, otherwise falls back to local filesystem. */
+ *  Uses S3 when configured, otherwise falls back to local filesystem. */
 let _tuiArtifactStore = null;
 function getTuiArtifactStore() {
     if (_tuiArtifactStore) return _tuiArtifactStore;
-    const connStr = process.env.AZURE_STORAGE_CONNECTION_STRING;
-    if (connStr) {
-        const container = process.env.AZURE_STORAGE_CONTAINER || "copilot-sessions";
-        _tuiArtifactStore = new SessionBlobStore(connStr, container);
+    const bucket = process.env.AWS_S3_BUCKET_NAME;
+    const region = process.env.AWS_S3_REGION;
+    if (bucket && region) {
+        _tuiArtifactStore = new SessionBlobStore(
+            bucket,
+            region,
+            undefined,
+            {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+                endpoint: process.env.AWS_S3_ENDPOINT || undefined,
+            },
+        );
     } else {
         _tuiArtifactStore = new FilesystemArtifactStore();
     }
@@ -514,7 +523,7 @@ function detectArtifactLinks(text, orchId) {
 }
 
 /**
- * Download an artifact from blob storage to EXPORTS_DIR.
+ * Download an artifact from shared object storage to EXPORTS_DIR.
  * Returns the local path on success, null on failure.
  */
 async function downloadArtifact(sessionId, filename) {
@@ -4102,8 +4111,11 @@ if (!isRemote) {
             githubToken: process.env.GITHUB_TOKEN,
             logLevel: process.env.LOG_LEVEL || "error",
             sessionStateDir: process.env.SESSION_STATE_DIR || path.join(os.homedir(), ".copilot", "session-state"),
-            blobConnectionString: workerModuleConfig.blobConnectionString || process.env.AZURE_STORAGE_CONNECTION_STRING,
-            blobContainer: process.env.AZURE_STORAGE_CONTAINER || "copilot-sessions",
+            awsS3BucketName: workerModuleConfig.awsS3BucketName || process.env.AWS_S3_BUCKET_NAME,
+            awsS3Region: workerModuleConfig.awsS3Region || process.env.AWS_S3_REGION,
+            awsAccessKeyId: workerModuleConfig.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID,
+            awsSecretAccessKey: workerModuleConfig.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY,
+            awsS3Endpoint: workerModuleConfig.awsS3Endpoint || process.env.AWS_S3_ENDPOINT || undefined,
             workerNodeId: `local-rt-${i}`,
             systemMessage: workerModuleConfig.systemMessage || WORKER_SYSTEM_MESSAGE || undefined,
             pluginDirs,
@@ -4309,7 +4321,7 @@ const mgmt = new PilotSwarmManagementClient({
 });
 
 const STARTUP_DB_RETRY_MS = 30_000;
-const STARTUP_DB_CONNECT_TIMEOUT_MS = 10_000;
+const STARTUP_DB_CONNECT_TIMEOUT_MS = 30_000;
 
 function isStartupTransientDbError(err) {
     const msg = String(err?.message || err || "");
@@ -4341,7 +4353,7 @@ while (true) {
 
     // Race the connection against a timeout so unreachable hosts don't block for minutes
     const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Connection timed out (10s deadline)")), STARTUP_DB_CONNECT_TIMEOUT_MS)
+        setTimeout(() => reject(new Error("Connection timed out (30s deadline)")), STARTUP_DB_CONNECT_TIMEOUT_MS)
     );
     const results = await Promise.allSettled([
         Promise.race([client.start(), timeoutPromise]),
@@ -4412,6 +4424,7 @@ appendLog(isRemote
 // without a temporal dead zone error. Assigned properly after session setup.
 let activeOrchId = "";
 let activeSessionShort = "";
+let orchSelectFollowActive = true; // when true, next refresh snaps selection to activeOrchId
 
 const knownOrchestrationIds = new Set();
 let orchStatusCache = new Map(); // id → { status, createdAt }
@@ -6232,7 +6245,6 @@ activeOrchId = preferredSystemOrchId || (thisSessionId ? `session-${thisSessionI
 activeSessionShort = activeOrchId
     ? shortId(activeOrchId)
     : "";
-let orchSelectFollowActive = true; // when true, next refresh snaps selection to activeOrchId
 
 function updateChatLabel() {
     const model = sessionModels.get(activeOrchId) || "";
@@ -6285,6 +6297,9 @@ function startObserver(orchId) {
         }
         if (!isTerminalSessionState(status)) {
             sessionLoggedTerminalStatus.delete(orchId);
+        }
+        if (status !== "running") {
+            stopChatSpinner(orchId);
         }
         sessionLiveStatus.set(orchId, status);
         setSessionPendingTurn(orchId, false);
@@ -6464,6 +6479,7 @@ function startObserver(orchId) {
         }
 
         const terminalCs = await consumeTerminalArtifacts(statusSnapshot, source);
+        stopChatSpinner(orchId);
         clearSessionPendingQuestion(orchId);
         const alreadyLogged = sessionLoggedTerminalStatus.get(orchId) === terminalStatus;
 
@@ -6523,6 +6539,7 @@ function startObserver(orchId) {
                     lastVersion = currentStatus.customStatusVersion || 0;
                     if (cs.turnResult && cs.turnResult.type === "completed") {
                         lastIteration = cs.iteration || 0;
+                        stopChatSpinner(orchId);
                         if (!shouldSkipCompletedTurnResult(cs.turnResult.content, orchId)) {
                             showCopilotMessage(cs.turnResult.content, orchId);
                         }
@@ -6653,6 +6670,7 @@ function startObserver(orchId) {
                         appendActivity(`{green-fg}[obs] ✓ SHOWING turnResult: iter=${cs.iteration} > lastIter=${lastIteration}, type=${cs.turnResult.type}, content=${(cs.turnResult.content || "").slice(0, 80)}{/green-fg}`, orchId);
                         lastIteration = cs.iteration;
                         if (cs.turnResult.type === "completed") {
+                            stopChatSpinner(orchId);
                             let displayContent = cs.turnResult.content;
                             // Extract HEADING if present (from summary requests)
                             // Skip for system sessions — they have a fixed title
@@ -6673,7 +6691,21 @@ function startObserver(orchId) {
                             } else {
                                 setStatusIfActive(`Running (${cs.status})…`);
                             }
+                        } else if (cs.turnResult.type === "wait") {
+                            stopChatSpinner(orchId);
+                            if (cs.turnResult.content) {
+                                const preview = summarizeActivityPreview(cs.turnResult.content);
+                                appendActivity(`{white-fg}[${ts()}]{/white-fg} {gray-fg}[intermediate]{/gray-fg} ${preview}`, orchId);
+                                promoteIntermediateContent(cs.turnResult.content, orchId);
+                            }
+                            setStatusIfActive(formatWaitingLabel({
+                                cronActive: cs?.cronActive === true,
+                                cronReason: cs?.cronReason,
+                                waitReason: cs?.waitReason || cs.turnResult.waitReason,
+                            }));
+                            updateLiveStatus("waiting");
                         } else if (cs.turnResult.type === "input_required") {
+                            stopChatSpinner(orchId);
                             const question = cs.turnResult.question || cs.pendingQuestion || "?";
                             if (setSessionPendingQuestion(orchId, question)) {
                                 appendChatRaw(`{magenta-fg}[?] ${question}{/magenta-fg}`, orchId);

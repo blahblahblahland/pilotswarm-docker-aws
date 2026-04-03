@@ -1,8 +1,8 @@
 /**
- * Artifact Tools — allow agents to read/write markdown files via Azure Blob Storage.
+ * Artifact Tools — allow agents to read/write markdown files via shared object storage.
  *
  * Three tools:
- *   - `write_artifact` — upload a file to blob storage
+ *   - `write_artifact` — upload a file to object storage
  *   - `read_artifact`  — read a file from another session's artifacts
  *   - `export_artifact` — return an artifact:// URI for TUI on-demand download
  *
@@ -12,7 +12,7 @@
  * Agents communicate via artifacts: Agent A writes, Agent B reads.
  * For TUI download, the agent calls `export_artifact` which returns an
  * `artifact://sessionId/filename` URI. The TUI detects these URIs and
- * lets the user download on demand from blob storage directly.
+ * lets the user download on demand from shared storage directly.
  *
  * @module
  * @internal
@@ -25,7 +25,7 @@ import type { ArtifactStore } from "./session-store.js";
 /**
  * Create artifact tools bound to the given artifact store.
  *
- * The store can be Azure Blob (SessionBlobStore) or local filesystem
+ * The store can be S3-backed (SessionBlobStore) or local filesystem
  * (FilesystemArtifactStore). The `sessionId` for write/export operations
  * is injected by the tool handler via the session context.
  */
@@ -38,7 +38,7 @@ export function createArtifactTools(opts: {
 
     const writeTool = defineTool("write_artifact", {
         description:
-            "Write a file (typically markdown) to shared blob storage. " +
+            "Write a file (typically markdown) to shared object storage. " +
             "Other agents can read it via `read_artifact`. " +
             "To make it downloadable by the TUI user, call `export_artifact` afterwards.\n\n" +
             "The file is stored under the current session's artifact folder. " +

@@ -86,15 +86,19 @@ export class PilotSwarmWorker {
             waitThreshold: options.waitThreshold ?? 30,
         };
 
-        if (options.blobConnectionString) {
+        if (options.awsS3BucketName && options.awsS3Region) {
             this.blobStore = new SessionBlobStore(
-                options.blobConnectionString,
-                options.blobContainer ?? "copilot-sessions",
+                options.awsS3BucketName,
+                options.awsS3Region,
                 options.sessionStateDir,
+                {
+                    accessKeyId: options.awsAccessKeyId,
+                    secretAccessKey: options.awsSecretAccessKey,
+                    endpoint: options.awsS3Endpoint,
+                },
             );
             this.artifactStore = this.blobStore;
         } else {
-            // Local mode: use filesystem-based artifact storage
             const artifactDir = options.sessionStateDir
                 ? path.join(path.dirname(options.sessionStateDir), "artifacts")
                 : undefined;
@@ -218,7 +222,7 @@ export class PilotSwarmWorker {
 
     // ─── Lifecycle ───────────────────────────────────────────
 
-    async start(): Promise<void> {
+    async start(): Promise<void> {//creates the duroxide runtime and starts it, making the worker ready to accept sessions and execute activities
         if (this._started) return;
 
         this._provider = await this._createProvider();
