@@ -43,7 +43,7 @@ type CmsEvent = {
 
 type TokenCount = { input: number; output: number };
 
-type RightTab = "activity" | "logs" | "sequence" | "nodes" | "files" | "details" | "stats";
+type RightTab = "activity" | "logs" | "files" | "details" | "stats";
 
 type AgentStat = {
   sessionId: string;
@@ -206,13 +206,6 @@ function SlashCommandMenu({ onSelect, onDismiss }: { onSelect: (cmd: string) => 
 
 // ─── Agent Picker Modal ────────────────────────────────────────────────────────
 
-const AGENT_TYPES = [
-  { id: "generic", name: "Generic", description: "Open-ended work, any topic", accent: "#71717a" },
-  { id: "investigator", name: "Investigator", description: "Incident response + root cause analysis", accent: "#f87171" },
-  { id: "deployer", name: "Deployer", description: "Deployment automation + rollback management", accent: "#60a5fa" },
-  { id: "reporter", name: "Reporter", description: "Status reports + summaries", accent: "#34d399" },
-];
-
 function AgentPicker({
   availableModels,
   defaultModel,
@@ -224,36 +217,15 @@ function AgentPicker({
   onStart: (model: string) => void;
   onCancel: () => void;
 }) {
-  const [selectedAgent, setSelectedAgent] = React.useState("generic");
   const [model, setModel] = React.useState(defaultModel);
 
   React.useEffect(() => setModel(defaultModel), [defaultModel]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+      <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
         <h2 className="mb-1 text-base font-semibold text-zinc-100">New Session</h2>
-        <p className="mb-5 text-xs text-zinc-500">Choose a session type and model to get started.</p>
-
-        <div className="mb-5 grid grid-cols-2 gap-3">
-          {AGENT_TYPES.map(agent => (
-            <button
-              key={agent.id}
-              type="button"
-              onClick={() => setSelectedAgent(agent.id)}
-              className={cn(
-                "rounded-lg border p-3 text-left transition-all",
-                selectedAgent === agent.id
-                  ? "border-zinc-500 bg-zinc-800"
-                  : "border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800/60",
-              )}
-              style={selectedAgent === agent.id ? { borderColor: agent.accent } : {}}
-            >
-              <div className="mb-1 text-sm font-medium text-zinc-100">{agent.name}</div>
-              <div className="text-[11px] text-zinc-500">{agent.description}</div>
-            </button>
-          ))}
-        </div>
+        <p className="mb-5 text-xs text-zinc-500">Choose a model to get started.</p>
 
         <div className="mb-5">
           <label className="mb-1.5 block text-xs font-medium text-zinc-400">Model</label>
@@ -291,26 +263,60 @@ function AgentPicker({
 // ─── Inspector Tab Content ─────────────────────────────────────────────────────
 
 function LogsTab({ events }: { events: CmsEvent[] }) {
-  if (!events.length) {
+  // Pre-compute tool durations: map tool name → start timestamp for the most
+  // recent unmatched execution_start. When we see execution_complete we look
+  // up the start time and render the elapsed ms.
+  const toolStartTimes = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of events) {
+      if (e.eventType === "tool.execution_start") {
+        const d = isRecord(e.data) ? e.data : {};
+        const name = typeof d.toolName === "string" ? d.toolName : typeof d.name === "string" ? d.name : "tool";
+        map[name] = new Date(e.createdAt).getTime();
+      }
+    }
+    return map;
+  }, [events]);
+
+  // Filter out internal accounting noise — token counts are already in Stats tab
+  const visible = React.useMemo(
+    () => events.filter(e => e.eventType !== "assistant.usage"),
+    [events],
+  );
+
+  if (!visible.length) {
     return <div className="p-3 text-xs text-zinc-600">No events yet.</div>;
   }
+
   return (
     <div className="space-y-0.5 p-2 font-mono text-[10px]">
-      {events.map(e => {
+      {visible.map(e => {
         const t = new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
         const d = isRecord(e.data) ? e.data : {};
-        const snippet = typeof d.content === "string"
-          ? d.content.slice(0, 60)
-          : typeof d.toolName === "string"
-          ? d.toolName
-          : typeof d.name === "string"
-          ? d.name
-          : "";
+        const toolName = typeof d.toolName === "string" ? d.toolName : typeof d.name === "string" ? d.name : null;
+        const snippet = typeof d.content === "string" ? d.content.slice(0, 60) : (toolName ?? "");
+
+        // Duration: only on execution_complete, only if we have a start time
+        let duration: string | null = null;
+        if (e.eventType === "tool.execution_complete" && toolName && toolStartTimes[toolName]) {
+          const ms = new Date(e.createdAt).getTime() - toolStartTimes[toolName]!;
+          duration = ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+        }
+
+        const isToolComplete = e.eventType === "tool.execution_complete";
+        const isToolStart = e.eventType === "tool.execution_start";
+
         return (
           <div key={e.seq} className="flex gap-2 rounded px-1 py-0.5 hover:bg-zinc-800/40">
             <span className="shrink-0 text-zinc-700">{t}</span>
-            <span className="text-zinc-500">{e.eventType}</span>
+            <span className={cn(
+              "shrink-0",
+              isToolComplete ? "text-green-700" : isToolStart ? "text-yellow-700" : "text-zinc-500",
+            )}>
+              {e.eventType}
+            </span>
             {snippet && <span className="truncate text-zinc-400">{snippet}</span>}
+            {duration && <span className="ml-auto shrink-0 text-zinc-500">{duration}</span>}
           </div>
         );
       })}
@@ -318,91 +324,6 @@ function LogsTab({ events }: { events: CmsEvent[] }) {
   );
 }
 
-function SequenceTab({ events }: { events: CmsEvent[] }) {
-  type Step = { from: string; to: string; label: string; type: "user" | "agent" | "tool" | "system" };
-  const steps = React.useMemo<Step[]>(() => {
-    const result: Step[] = [];
-    for (const e of events) {
-      if (e.eventType === "user.message") {
-        result.push({ from: "User", to: "Agent", label: "send", type: "user" });
-      } else if (e.eventType === "tool.execution_start") {
-        const d = isRecord(e.data) ? e.data : {};
-        const name = typeof d.toolName === "string" ? d.toolName : typeof d.name === "string" ? d.name : "tool";
-        result.push({ from: "Agent", to: "Tool", label: name, type: "tool" });
-      } else if (e.eventType === "tool.execution_complete") {
-        result.push({ from: "Tool", to: "Agent", label: "result", type: "tool" });
-      } else if (e.eventType === "assistant.message") {
-        result.push({ from: "Agent", to: "User", label: "reply", type: "agent" });
-      }
-    }
-    return result;
-  }, [events]);
-
-  if (!steps.length) {
-    return <div className="p-3 text-xs text-zinc-600">No sequence yet.</div>;
-  }
-
-  const colorFor = (t: Step["type"]) => {
-    if (t === "user") return "text-zinc-200";
-    if (t === "agent") return "text-blue-400";
-    if (t === "tool") return "text-yellow-500";
-    return "text-zinc-500";
-  };
-
-  return (
-    <div className="space-y-1 p-3 font-mono text-[10px]">
-      {steps.map((s, i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          <span className="w-10 shrink-0 text-right text-zinc-500">{s.from}</span>
-          <span className="text-zinc-700">─</span>
-          <span className={cn("shrink-0 truncate", colorFor(s.type))}>{s.label}</span>
-          <span className="text-zinc-700">→</span>
-          <span className="w-10 shrink-0 text-zinc-500">{s.to}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function NodesTab({ sessions }: { sessions: SessionView[] }) {
-  const byStatus = React.useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of sessions) {
-      counts[s.status] = (counts[s.status] ?? 0) + 1;
-    }
-    return counts;
-  }, [sessions]);
-
-  const userSessions = sessions.filter(s => !s.isSystem);
-  const systemSessions = sessions.filter(s => s.isSystem);
-
-  return (
-    <div className="space-y-4 p-3 font-mono text-xs">
-      <div>
-        <div className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">Sessions</div>
-        <div className="space-y-1 text-[11px]">
-          <div className="flex justify-between text-zinc-400">
-            <span>User</span><span>{userSessions.length}</span>
-          </div>
-          <div className="flex justify-between text-zinc-400">
-            <span>System</span><span>{systemSessions.length}</span>
-          </div>
-        </div>
-      </div>
-      <div>
-        <div className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">By Status</div>
-        <div className="space-y-1 text-[11px]">
-          {Object.entries(byStatus).map(([status, count]) => (
-            <div key={status} className="flex justify-between">
-              <span className={statusDot(status)}>{status}</span>
-              <span className="text-zinc-400">{count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FilesTab({ sessionId, events }: { sessionId: string; events: CmsEvent[] }) {
   const artifactEvents = events.filter(e =>
@@ -886,8 +807,6 @@ export function SessionsShell() {
   const RIGHT_TABS: { key: RightTab; label: string }[] = [
     { key: "activity", label: "Activity" },
     { key: "logs", label: "Logs" },
-    { key: "sequence", label: "Seq" },
-    { key: "nodes", label: "Nodes" },
     { key: "files", label: "Files" },
     { key: "details", label: "Details" },
     { key: "stats", label: "Stats" },
@@ -1139,8 +1058,6 @@ export function SessionsShell() {
               )
             )}
             {rightTab === "logs" && <LogsTab events={events} />}
-            {rightTab === "sequence" && <SequenceTab events={events} />}
-            {rightTab === "nodes" && <NodesTab sessions={sessions} />}
             {rightTab === "files" && <FilesTab sessionId={selectedId} events={events} />}
             {rightTab === "stats" && <StatsTab stats={stats} />}
             {rightTab === "details" && (
