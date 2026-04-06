@@ -43,7 +43,24 @@ type CmsEvent = {
 
 type TokenCount = { input: number; output: number };
 
-type RightTab = "activity" | "logs" | "sequence" | "nodes" | "files" | "details";
+type RightTab = "activity" | "logs" | "sequence" | "nodes" | "files" | "details" | "stats";
+
+type AgentStat = {
+  sessionId: string;
+  title: string | null;
+  isSystem: boolean;
+  state: string;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+type StatsData = {
+  agents: AgentStat[];
+  totalInput: number;
+  totalOutput: number;
+  runningCount: number;
+  cpuPercent: number | null;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -423,6 +440,89 @@ function FilesTab({ sessionId, events }: { sessionId: string; events: CmsEvent[]
   );
 }
 
+// ─── Stats Tab ────────────────────────────────────────────────────────────────
+//
+// Displays a live breakdown of token usage per agent plus overall CPU usage.
+// Data comes from /api/stats which aggregates assistant.usage events from the
+// DB and fetches ECS CPU from CloudWatch. Refreshed every 5 seconds.
+
+function StatsTab({ stats }: { stats: StatsData | null }) {
+  if (!stats) {
+    return <div className="p-3 text-xs text-zinc-600">Loading stats…</div>;
+  }
+
+  const activeAgents = stats.agents.filter(a => a.inputTokens + a.outputTokens > 0);
+
+  return (
+    <div className="space-y-4 p-3 font-mono text-xs">
+
+      {/* ── Overall numbers ── */}
+      <div>
+        <div className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">Overall</div>
+        <div className="space-y-1">
+          <div className="flex justify-between text-zinc-400">
+            <span>tokens in</span>
+            <span className="text-zinc-300">{fmtTokens(stats.totalInput)}</span>
+          </div>
+          <div className="flex justify-between text-zinc-400">
+            <span>tokens out</span>
+            <span className="text-zinc-300">{fmtTokens(stats.totalOutput)}</span>
+          </div>
+          <div className="flex justify-between border-t border-zinc-800 pt-1 text-zinc-400">
+            <span>total</span>
+            <span className="font-semibold text-zinc-100">{fmtTokens(stats.totalInput + stats.totalOutput)}</span>
+          </div>
+          <div className="flex justify-between text-zinc-400">
+            <span>agents running</span>
+            <span className={stats.runningCount > 0 ? "text-blue-400" : "text-zinc-400"}>
+              {stats.runningCount}
+            </span>
+          </div>
+          <div className="flex justify-between text-zinc-400">
+            <span>worker cpu</span>
+            <span className="text-zinc-300">
+              {stats.cpuPercent !== null ? `${stats.cpuPercent.toFixed(1)}%` : "n/a"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Per-agent breakdown ── */}
+      <div>
+        <div className="mb-2 text-[10px] uppercase tracking-widest text-zinc-600">Per Agent</div>
+        {activeAgents.length === 0 ? (
+          <div className="text-[10px] text-zinc-600">No token usage recorded yet.</div>
+        ) : (
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="text-zinc-600">
+                <th className="pb-1 text-left font-normal">agent</th>
+                <th className="pb-1 text-right font-normal">in</th>
+                <th className="pb-1 text-right font-normal">out</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeAgents.map(a => (
+                <tr key={a.sessionId} className="border-t border-zinc-800/50">
+                  <td className="max-w-[120px] truncate py-0.5 pr-2">
+                    <span className={a.state === "running" ? "text-blue-400" : "text-zinc-400"}>
+                      {a.title ?? a.sessionId.slice(0, 8)}
+                      {a.isSystem ? " ◆" : ""}
+                    </span>
+                  </td>
+                  <td className="py-0.5 text-right text-zinc-300">{fmtTokens(a.inputTokens)}</td>
+                  <td className="py-0.5 text-right text-zinc-300">{fmtTokens(a.outputTokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
 // ─── Main Shell ───────────────────────────────────────────────────────────────
 
 export function SessionsShell() {
@@ -459,6 +559,9 @@ export function SessionsShell() {
   // Agent picker + slash commands
   const [showAgentPicker, setShowAgentPicker] = React.useState(false);
   const [showSlash, setShowSlash] = React.useState(false);
+
+  // Live stats (tokens per agent + CPU) — polled every 5 seconds
+  const [stats, setStats] = React.useState<StatsData | null>(null);
 
   const chatBottomRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -617,6 +720,24 @@ export function SessionsShell() {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatEvents.length]);
 
+  // Poll /api/stats every 5 seconds to keep token + CPU numbers fresh.
+  // The endpoint is lightweight — it runs one DB aggregation query and one
+  // CloudWatch call. 5 seconds gives a "live" feel without hammering Neon.
+  React.useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/stats", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json() as StatsData;
+        if (!cancelled) setStats(data);
+      } catch {}
+    };
+    void poll();
+    const id = setInterval(() => void poll(), 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   function recomputeDailyTotal() {
@@ -769,6 +890,7 @@ export function SessionsShell() {
     { key: "nodes", label: "Nodes" },
     { key: "files", label: "Files" },
     { key: "details", label: "Details" },
+    { key: "stats", label: "Stats" },
   ];
 
   return (
@@ -1020,6 +1142,7 @@ export function SessionsShell() {
             {rightTab === "sequence" && <SequenceTab events={events} />}
             {rightTab === "nodes" && <NodesTab sessions={sessions} />}
             {rightTab === "files" && <FilesTab sessionId={selectedId} events={events} />}
+            {rightTab === "stats" && <StatsTab stats={stats} />}
             {rightTab === "details" && (
               <div className="p-3">
                 {selected ? (
