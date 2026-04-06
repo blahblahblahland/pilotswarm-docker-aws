@@ -13,7 +13,7 @@
  */
 
 import { defineTool } from "@github/copilot-sdk";
-import { execSync } from "node:child_process";
+// import { execSync } from "node:child_process"; // used by scale_workers/get_infrastructure_stats (disabled — AWS Fargate)
 import type { SessionCatalogProvider } from "./cms.js";
 import type { BlobStore } from "./blob-store.js";
 import type { Tool } from "@github/copilot-sdk";
@@ -33,7 +33,10 @@ export function createResourceManagerTools(opts: {
     const cmsSchema = opts.cmsSchema ?? "copilot_sessions";
 
     // ── get_infrastructure_stats ─────────────────────────────
-
+    // DISABLED: uses kubectl, which is not available on AWS Fargate.
+    // CPU/task metrics are available via CloudWatch (see /api/stats route).
+    // To re-enable: uncomment this block and add infraStatsTool to the return array.
+    /*
     const infraStatsTool = defineTool("get_infrastructure_stats", {
         description:
             "Get AKS/Kubernetes infrastructure stats: pod count, status, restarts, " +
@@ -121,6 +124,7 @@ export function createResourceManagerTools(opts: {
             }
         },
     });
+    */ // end get_infrastructure_stats (disabled — AWS Fargate)
 
     // ── get_storage_stats ────────────────────────────────────
 
@@ -555,7 +559,10 @@ export function createResourceManagerTools(opts: {
     });
 
     // ── scale_workers ────────────────────────────────────────
-
+    // DISABLED: uses kubectl, which is not available on AWS Fargate.
+    // To scale ECS tasks: aws ecs update-service --cluster pilotswarm --service pilotswarm-worker --desired-count N
+    // To re-enable: uncomment this block and add scaleWorkersTool to the return array.
+    /*
     const scaleWorkersTool = defineTool("scale_workers", {
         description:
             "Scale the AKS worker deployment to a specified number of replicas. " +
@@ -605,6 +612,7 @@ export function createResourceManagerTools(opts: {
             }
         },
     });
+    */ // end scale_workers (disabled — AWS Fargate)
 
     // ── force_terminate_session ──────────────────────────────
 
@@ -685,13 +693,13 @@ export function createResourceManagerTools(opts: {
     });
 
     return [
-        infraStatsTool,
+        // infraStatsTool,  // disabled — kubectl not available on AWS Fargate
         storageStatsTool,
         dbStatsTool,
         purgeOrphansTool,
         purgeEventsTool,
         compactDbTool,
-        scaleWorkersTool,
+        // scaleWorkersTool, // disabled — kubectl not available on AWS Fargate
         forceTerminateTool,
     ];
 }
