@@ -1109,7 +1109,7 @@ export function SessionsShell() {
           className="flex flex-shrink-0 flex-col overflow-hidden"
         >
           {/* Tab bar */}
-          <div className="flex shrink-0 border-b border-zinc-800 bg-zinc-900/60">
+          <div className="flex shrink-0 overflow-x-auto border-b border-zinc-800 bg-zinc-900/60 scrollbar-none" style={{scrollbarWidth:"none"}}>
             {RIGHT_TABS.map(t => (
               <button
                 key={t.key}

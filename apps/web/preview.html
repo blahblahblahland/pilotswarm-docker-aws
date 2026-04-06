@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PilotSwarm UI Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #0c0c0e; color: #e4e4e7; font-family: 'Geist Mono', 'Courier New', monospace; margin: 0; height: 100vh; overflow: hidden; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; } ::-webkit-scrollbar-track { background: #18181b; } ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+    .scrollbar-none::-webkit-scrollbar { display: none; } .scrollbar-none { scrollbar-width: none; }
+    .prose a { color: #60a5fa; text-decoration: underline; }
+    .prose code { background: #27272a; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+    .tab-content { display: none; } .tab-content.active { display: block; }
+    .tab-btn { padding: 8px 10px; font-size: 10px; font-family: monospace; color: #52525b; cursor: pointer; background: none; border: none; white-space: nowrap; transition: color .15s; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tab-btn:hover { color: #a1a1aa; }
+    .tab-btn.active { color: #e4e4e7; border-bottom-color: #d4d4d8; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .cursor { animation: blink 1s step-end infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .pulse { animation: pulse 2s ease-in-out infinite; }
+  </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col" style="background:#0c0c0e">
+
+  <!-- HEADER -->
+  <header class="flex h-11 shrink-0 items-center justify-between border-b px-4" style="border-color:#27272a; background:#111113">
+    <div class="flex items-center gap-3">
+      <span class="font-bold tracking-tight text-sm" style="color:#e4e4e7">PilotSwarm</span>
+      <span class="text-xs hidden sm:block" style="color:#52525b">Durable AI Orchestration</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-xs" style="color:#71717a">Model</label>
+      <select class="h-7 rounded border px-2 text-xs focus:outline-none" style="border-color:#3f3f46; background:#27272a; color:#d4d4d8">
+        <option>claude-sonnet-4-6</option>
+        <option>claude-opus-4-6</option>
+        <option>gpt-4o</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs" style="border-color:#27272a; background:#111113">
+      <span style="color:#52525b">tokens today</span>
+      <span style="color:#d4d4d8">↑87.4k ↓61.2k</span>
+      <span style="color:#52525b">= 148.6k</span>
+    </div>
+  </header>
+
+  <!-- BODY -->
+  <div class="flex flex-1 min-h-0" style="overflow:hidden">
+
+    <!-- LEFT: SIDEBAR (260px) -->
+    <aside class="flex flex-col overflow-hidden border-r shrink-0" style="width:260px; border-color:#27272a">
+      <div class="shrink-0 border-b px-3 py-2" style="border-color:#27272a">
+        <input placeholder="Search sessions…" class="w-full rounded border px-2.5 py-1.5 text-xs focus:outline-none" style="border-color:#3f3f46; background:#1c1c1e; color:#d4d4d8" />
+      </div>
+
+      <div class="flex-1 overflow-auto py-1 text-xs">
+        <div class="flex items-center gap-1.5 px-3 py-1" style="color:#52525b; font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase">
+          MY CHATS <span style="color:#3f3f46">(4)</span>
+        </div>
+
+        <!-- Active session -->
+        <div class="flex items-center gap-1 py-0.5 pr-1 group" style="background:#27272a80; padding-left:8px">
+          <span class="w-3 text-center shrink-0" style="color:#3f3f46">▾</span>
+          <button class="flex flex-1 items-center gap-1.5 min-w-0 text-left truncate">
+            <span style="color:#60a5fa; font-size:8px">●</span>
+            <span class="truncate" style="color:#f4f4f5">Research agent task</span>
+          </button>
+        </div>
+        <!-- Child -->
+        <div class="flex items-center gap-1 py-0.5 pr-1 group hover:opacity-80" style="padding-left:22px">
+          <span class="w-3 text-center shrink-0" style="color:#3f3f46; font-size:10px">└</span>
+          <button class="flex flex-1 items-center gap-1.5 min-w-0 text-left truncate">
+            <span class="pulse" style="color:#60a5fa; font-size:8px">●</span>
+            <span class="truncate" style="color:#71717a">web-scraper</span>
+          </button>
+        </div>
+        <!-- Grandchild -->
+        <div class="flex items-center gap-1 py-0.5 pr-1 group hover:opacity-80" style="padding-left:36px">
+          <span class="w-3 text-center shrink-0" style="color:#3f3f46; font-size:10px">└</span>
+          <button class="flex flex-1 items-center gap-1.5 min-w-0 text-left truncate">
+            <span style="color:#22c55e; font-size:8px">●</span>
+            <span class="truncate" style="color:#71717a">parser-sub</span>
+          </button>
+        </div>
+
+        <!-- Other sessions -->
+        <div class="flex items-center gap-1 py-0.5 pr-1 group hover:bg-white/5 cursor-pointer" style="padding-left:8px">
+          <span class="w-3 text-center shrink-0" style="color:#3f3f46">▸</span>
+          <button class="flex flex-1 items-center gap-1.5 min-w-0 text-left truncate">
+            <span style="color:#facc15; font-size:8px">●</span>
+            <span class="truncate" style="color:#a1a1aa">Summarize codebase</span>
+          </button>
+        </div>
+        <div class="flex items-center gap-1 py-0.5 pr-1 group hover:bg-white/5 cursor-pointer" style="padding-left:8px">
+          <span class="w-3 text-center shrink-0 invisible">▸</span>
+          <button class="flex flex-1 items-center gap-1.5 min-w-0 text-left truncate">
+            <span style="color:#52525b; font-size:8px">●</span>
+            <span class="truncate" style="color:#71717a">Build PR diff tool</span>
+          </button>
+        </div>
+        <div class="flex items-center gap-1 py-0.5 pr-1 group hover:bg-white/5 cursor-pointer" style="padding-left:8px">
+          <span class="w-3 text-center shrink-0 invisible">▸</span>
+          <button class="flex flex-1 items-center gap-1.5 min-w-0 text-left truncate">
+            <span style="color:#52525b; font-size:8px">●</span>
+            <span class="truncate" style="color:#71717a">f8532488</span>
+          </button>
+        </div>
+
+        <!-- System section -->
+        <div class="mt-2">
+          <button class="flex w-full items-center gap-1.5 px-3 py-1 text-left hover:text-zinc-300" style="color:#52525b; font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase">
+            <span>▸</span> SYSTEM <span style="color:#3f3f46">(2)</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="shrink-0 border-t px-3 py-2.5" style="border-color:#27272a">
+        <button class="w-full rounded border py-1.5 text-xs transition-colors hover:opacity-80" style="border-color:#3f3f46; background:#1c1c1e; color:#d4d4d8">
+          + New Chat
+        </button>
+      </div>
+    </aside>
+
+    <!-- CENTER: CHAT -->
+    <main class="flex flex-col overflow-hidden border-r flex-1" style="border-color:#27272a">
+      <div class="flex shrink-0 items-center justify-between border-b px-3 py-1.5" style="border-color:#27272a; background:#111113">
+        <span class="text-xs font-semibold tracking-wide" style="color:#71717a">Chat [5914d0f5]</span>
+        <div class="flex items-center gap-1.5">
+          <span style="color:#60a5fa; font-size:10px">●</span>
+          <span class="text-xs" style="color:#71717a">running</span>
+          <span class="mx-1" style="color:#3f3f46">|</span>
+          <button class="rounded px-1.5 py-0.5 hover:bg-white/10 text-xs" style="color:#71717a; font-size:10px">spawn</button>
+          <button class="rounded px-1.5 py-0.5 hover:bg-white/10 text-xs" style="color:#71717a; font-size:10px">rename</button>
+          <button class="rounded px-1.5 py-0.5 hover:bg-white/10 text-xs" style="color:#71717a; font-size:10px">cancel</button>
+          <button class="rounded px-1.5 py-0.5 hover:bg-red-900/30 text-xs" style="color:#f87171; font-size:10px">delete</button>
+        </div>
+      </div>
+
+      <div class="flex flex-1 flex-col gap-3 overflow-auto px-4 py-3">
+        <div class="flex flex-col gap-1">
+          <div style="font-size:10px; color:#71717a"><span style="color:#d4d4d8; font-weight:600">You</span> · 04:49</div>
+          <div class="rounded border px-3 py-2 text-sm" style="border-color:#3f3f4650; background:#1c1c1e80; color:#e4e4e7">
+            Can you help me research and summarize the latest developments in durable AI agent orchestration frameworks?
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div style="font-size:10px; color:#71717a"><span style="color:#60a5fa; font-weight:600">Assistant</span> · 04:50</div>
+          <div class="rounded border px-3 py-2 text-sm" style="border-color:#27272a; background:#111113; color:#e4e4e7">
+            I'll research this for you. Let me start by looking at the major frameworks and their recent updates.<br><br>
+            Here's what I found on durable AI orchestration:<br><br>
+            <strong style="color:#f4f4f5">Key frameworks:</strong>
+            <ul style="margin:6px 0; padding-left:18px; color:#a1a1aa">
+              <li><code style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:11px">duroxide</code> — Rust-based durable execution engine</li>
+              <li><code style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:11px">temporal.io</code> — Workflow orchestration at scale</li>
+              <li><code style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:11px">langgraph</code> — Graph-based agent state machines</li>
+            </ul>
+            I've spawned a sub-agent to do a deeper analysis on each one.
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div style="font-size:10px; color:#71717a"><span style="color:#d4d4d8; font-weight:600">You</span> · 04:52</div>
+          <div class="rounded border px-3 py-2 text-sm" style="border-color:#3f3f4650; background:#1c1c1e80; color:#e4e4e7">
+            Great, focus on crash recovery and how sessions survive restarts.
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div style="font-size:10px; color:#71717a"><span style="color:#60a5fa; font-weight:600">Assistant</span> · now</div>
+          <div class="rounded border px-3 py-2 text-sm" style="border-color:#27272a; background:#111113; color:#71717a">
+            Analyzing crash recovery mechanisms… <span class="cursor">▌</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="shrink-0 border-t px-3 py-2.5" style="border-color:#27272a; background:#111113">
+        <div class="flex gap-2">
+          <input placeholder="Send a message…" class="flex-1 rounded border px-3 py-1.5 text-sm focus:outline-none" style="border-color:#3f3f46; background:#1c1c1e; color:#d4d4d8" />
+          <button class="rounded border px-4 py-1.5 text-xs transition-colors hover:opacity-80" style="border-color:#52525b; background:#27272a; color:#d4d4d8">Send</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT: TABBED INSPECTOR (300px) -->
+    <div class="flex flex-col overflow-hidden shrink-0" style="width:300px">
+
+      <!-- Tab bar (scrollable so all 7 tabs fit) -->
+      <div id="tab-bar" class="flex shrink-0 border-b overflow-x-auto scrollbar-none" style="border-color:#27272a; background:#111113">
+        <button class="tab-btn active" onclick="switchTab('activity')">Activity</button>
+        <button class="tab-btn" onclick="switchTab('logs')">Logs</button>
+        <button class="tab-btn" onclick="switchTab('seq')">Seq</button>
+        <button class="tab-btn" onclick="switchTab('nodes')">Nodes</button>
+        <button class="tab-btn" onclick="switchTab('files')">Files</button>
+        <button class="tab-btn" onclick="switchTab('details')">Details</button>
+        <button class="tab-btn" onclick="switchTab('stats')">Stats</button>
+      </div>
+
+      <!-- ACTIVITY TAB -->
+      <div id="tab-activity" class="tab-content active flex-1 overflow-auto px-3 py-2 space-y-1">
+        <div class="flex items-center justify-between gap-2 rounded border px-2 py-1" style="border-color:#27272a; background:#111113">
+          <span class="text-xs" style="color:#d4d4d8">web_search</span>
+          <span class="pulse" style="color:#facc15; font-size:10px">…</span>
+          <span style="color:#3f3f46; font-size:10px">04:50</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 rounded border px-2 py-1" style="border-color:#27272a; background:#111113">
+          <span class="text-xs" style="color:#d4d4d8">web_search</span>
+          <span style="color:#22c55e; font-size:10px">✓</span>
+          <span style="color:#3f3f46; font-size:10px">04:50</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 rounded border px-2 py-1" style="border-color:#27272a; background:#111113">
+          <span class="text-xs" style="color:#d4d4d8">spawn_agent</span>
+          <span style="color:#22c55e; font-size:10px">✓</span>
+          <span style="color:#3f3f46; font-size:10px">04:51</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 rounded border px-2 py-1" style="border-color:#27272a; background:#111113">
+          <span class="text-xs" style="color:#d4d4d8">read_file</span>
+          <span style="color:#22c55e; font-size:10px">✓</span>
+          <span style="color:#3f3f46; font-size:10px">04:51</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 rounded border px-2 py-1" style="border-color:#27272a; background:#111113">
+          <span class="text-xs" style="color:#d4d4d8">write_artifact</span>
+          <span class="pulse" style="color:#facc15; font-size:10px">…</span>
+          <span style="color:#3f3f46; font-size:10px">04:52</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 rounded border px-2 py-1" style="border-color:#3f3f4630; background:#0f0f11">
+          <span class="text-xs" style="color:#52525b">session.status_changed</span>
+          <span style="color:#3f3f46; font-size:10px">04:52</span>
+        </div>
+      </div>
+
+      <!-- LOGS TAB -->
+      <div id="tab-logs" class="tab-content flex-1 overflow-auto px-3 py-2">
+        <div class="space-y-0.5 font-mono" style="font-size:10px">
+          <div style="color:#52525b">04:50:01 [info] session started</div>
+          <div style="color:#52525b">04:50:02 [info] model: claude-sonnet-4-6</div>
+          <div style="color:#a1a1aa">04:50:04 [tool] web_search called</div>
+          <div style="color:#22c55e">04:50:08 [tool] web_search done (1.2s)</div>
+          <div style="color:#a1a1aa">04:51:01 [tool] spawn_agent called</div>
+          <div style="color:#22c55e">04:51:02 [tool] spawn_agent done (0.4s)</div>
+          <div style="color:#a1a1aa">04:51:10 [tool] read_file called</div>
+          <div style="color:#22c55e">04:51:11 [tool] read_file done (0.1s)</div>
+          <div style="color:#a1a1aa">04:52:00 [tool] write_artifact called</div>
+          <div class="pulse" style="color:#facc15">04:52:03 [tool] write_artifact running…</div>
+        </div>
+      </div>
+
+      <!-- SEQ TAB -->
+      <div id="tab-seq" class="tab-content flex-1 overflow-auto px-3 py-3">
+        <div class="space-y-1" style="font-size:10px; color:#52525b">
+          <div class="flex items-center gap-2">
+            <span style="color:#71717a">User</span>
+            <span>──────────────────►</span>
+            <span style="color:#60a5fa">Agent</span>
+          </div>
+          <div class="flex items-center gap-2 pl-6">
+            <span style="color:#60a5fa">Agent</span>
+            <span>──────────────────►</span>
+            <span style="color:#a1a1aa">web_search</span>
+          </div>
+          <div class="flex items-center gap-2 pl-6">
+            <span style="color:#a1a1aa">web_search</span>
+            <span>──────────────────►</span>
+            <span style="color:#60a5fa">Agent</span>
+          </div>
+          <div class="flex items-center gap-2 pl-6">
+            <span style="color:#60a5fa">Agent</span>
+            <span>──────────────────►</span>
+            <span style="color:#a1a1aa">spawn_agent</span>
+          </div>
+          <div class="flex items-center gap-2 pl-12">
+            <span style="color:#a1a1aa">spawn_agent</span>
+            <span>──►</span>
+            <span style="color:#60a5fa">Child</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- NODES TAB -->
+      <div id="tab-nodes" class="tab-content flex-1 overflow-auto px-3 py-2">
+        <div class="space-y-1" style="font-size:10px">
+          <div class="flex items-center justify-between rounded border px-2 py-1" style="border-color:#27272a; background:#111113">
+            <span style="color:#f4f4f5">Research agent task</span>
+            <span class="pulse" style="color:#60a5fa; font-size:8px">● running</span>
+          </div>
+          <div class="flex items-center justify-between rounded border px-2 py-1 ml-4" style="border-color:#27272a; background:#111113">
+            <span style="color:#a1a1aa">web-scraper</span>
+            <span class="pulse" style="color:#60a5fa; font-size:8px">● running</span>
+          </div>
+          <div class="flex items-center justify-between rounded border px-2 py-1 ml-8" style="border-color:#27272a; background:#111113">
+            <span style="color:#a1a1aa">parser-sub</span>
+            <span style="color:#22c55e; font-size:8px">● done</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILES TAB -->
+      <div id="tab-files" class="tab-content flex-1 overflow-auto px-3 py-2">
+        <div class="space-y-0.5" style="font-size:10px; color:#71717a">
+          <div class="flex items-center gap-2 py-0.5 hover:text-zinc-300 cursor-pointer">
+            <span style="color:#52525b">📄</span> analysis_results.md
+          </div>
+          <div class="flex items-center gap-2 py-0.5 hover:text-zinc-300 cursor-pointer">
+            <span style="color:#52525b">📄</span> framework_comparison.json
+          </div>
+          <div class="flex items-center gap-2 py-0.5 hover:text-zinc-300 cursor-pointer">
+            <span style="color:#52525b">📄</span> crash_recovery_notes.txt
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAILS TAB -->
+      <div id="tab-details" class="tab-content flex-1 overflow-auto px-3 py-2">
+        <dl class="space-y-1.5 text-xs">
+          <div class="flex items-start gap-2">
+            <dt class="w-14 shrink-0" style="color:#52525b">id</dt>
+            <dd style="color:#a1a1aa; font-family:monospace">5914d0f5</dd>
+          </div>
+          <div class="flex items-start gap-2">
+            <dt class="w-14 shrink-0" style="color:#52525b">model</dt>
+            <dd style="color:#a1a1aa">claude-sonnet-4-6</dd>
+          </div>
+          <div class="flex items-start gap-2">
+            <dt class="w-14 shrink-0" style="color:#52525b">status</dt>
+            <dd style="color:#60a5fa">running</dd>
+          </div>
+          <div class="flex items-start gap-2">
+            <dt class="w-14 shrink-0" style="color:#52525b">turns</dt>
+            <dd style="color:#a1a1aa">3</dd>
+          </div>
+          <div class="flex items-start gap-2">
+            <dt class="w-14 shrink-0" style="color:#52525b">parent</dt>
+            <dd style="color:#a1a1aa">—</dd>
+          </div>
+          <div class="mt-3 pt-2" style="border-top:1px solid #27272a">
+            <a href="#" style="color:#52525b; font-size:10px; text-decoration:underline">download transcript</a>
+          </div>
+        </dl>
+      </div>
+
+      <!-- STATS TAB -->
+      <div id="tab-stats" class="tab-content flex-1 overflow-auto" style="padding:12px">
+
+        <!-- Overall section -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.12em; color:#52525b; margin-bottom:8px">Overall</div>
+          <div style="display:flex; flex-direction:column; gap:4px">
+
+            <div style="display:flex; justify-content:space-between; font-size:11px">
+              <span style="color:#71717a">tokens in</span>
+              <span style="color:#d4d4d8">87.4k</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px">
+              <span style="color:#71717a">tokens out</span>
+              <span style="color:#d4d4d8">61.2k</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; border-top:1px solid #27272a; padding-top:4px; margin-top:2px">
+              <span style="color:#71717a">total</span>
+              <span style="color:#f4f4f5; font-weight:600">148.6k</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px">
+              <span style="color:#71717a">agents running</span>
+              <span style="color:#60a5fa">2</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px">
+              <span style="color:#71717a">worker cpu</span>
+              <span style="color:#d4d4d8">12.4%</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Per Agent section -->
+        <div>
+          <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.12em; color:#52525b; margin-bottom:8px">Per Agent</div>
+          <table style="width:100%; font-size:10px; border-collapse:collapse">
+            <thead>
+              <tr style="color:#52525b">
+                <th style="text-align:left; font-weight:normal; padding-bottom:4px">agent</th>
+                <th style="text-align:right; font-weight:normal; padding-bottom:4px">in</th>
+                <th style="text-align:right; font-weight:normal; padding-bottom:4px">out</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-top:1px solid #27272a30">
+                <td style="padding:3px 4px 3px 0; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <span style="color:#60a5fa">Research agent task</span>
+                </td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">52.1k</td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">38.7k</td>
+              </tr>
+              <tr style="border-top:1px solid #27272a30">
+                <td style="padding:3px 4px 3px 0; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <span style="color:#60a5fa">web-scraper</span>
+                </td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">21.4k</td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">14.8k</td>
+              </tr>
+              <tr style="border-top:1px solid #27272a30">
+                <td style="padding:3px 4px 3px 0; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <span style="color:#a1a1aa">parser-sub</span>
+                </td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">8.9k</td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">5.4k</td>
+              </tr>
+              <tr style="border-top:1px solid #27272a30">
+                <td style="padding:3px 4px 3px 0; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <span style="color:#52525b">sweeper ◆</span>
+                </td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">3.1k</td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">2.1k</td>
+              </tr>
+              <tr style="border-top:1px solid #27272a30">
+                <td style="padding:3px 4px 3px 0; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <span style="color:#52525b">resourcemgr ◆</span>
+                </td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">1.9k</td>
+                <td style="padding:3px 0; text-align:right; color:#d4d4d8">0.2k</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="font-size:9px; color:#3f3f46; margin-top:8px">◆ = system agent · blue = running · refreshes every 5s</div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function switchTab(name) {
+      // Hide all tabs, deactivate all buttons
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      // Show selected
+      const content = document.getElementById('tab-' + name);
+      if (content) content.classList.add('active');
+      // Find and activate the clicked button
+      event.target.classList.add('active');
+    }
+  </script>
+
+</body>
+</html>
