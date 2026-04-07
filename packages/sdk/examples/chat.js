@@ -48,8 +48,11 @@ console.log(`   Store: ${STORE.startsWith("postgres") ? "PostgreSQL" : STORE}\n`
 const worker = new PilotSwarmWorker({
     store: STORE,
     githubToken: process.env.GITHUB_TOKEN,
-    blobConnectionString: process.env.AZURE_STORAGE_CONNECTION_STRING,
-    blobContainer: process.env.AZURE_STORAGE_CONTAINER || "copilot-sessions",
+    awsS3BucketName: process.env.AWS_S3_BUCKET_NAME,
+    awsS3Region: process.env.AWS_S3_REGION,
+    awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    awsS3Endpoint: process.env.AWS_S3_ENDPOINT,
 });
 await worker.start();
 

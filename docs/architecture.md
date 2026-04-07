@@ -236,7 +236,7 @@ All activity bodies are one-liners. All logic lives in `ManagedSession` (turn ex
                     +------------------------+------------------------+
                                              |
                                   +----------+--------+
-                                  |  Azure Blob       |
+                                  |  AWS S3           |
                                   |  (dehydrated      |
                                   |   session tars)   |
                                   +-------------------+
@@ -251,7 +251,7 @@ All activity bodies are one-liners. All logic lives in `ManagedSession` (turn ex
 | **Session lifecycle** | Client → CMS (create/update/delete) → duroxide (start/cancel orchestration) | CMS write-first, duroxide eventually consistent | Yes — CMS is source of truth |
 | **Real-time status** | Orchestration → `customStatus` → client `waitForStatusChange()` | duroxide custom status | No — ephemeral per execution |
 | **Abort** (client → LLM) | Client → event queue → orchestration → cancels running turn → `copilotSession.abort()` | `enqueueEvent({type: "abort"})` | Yes — through orchestration |
-| **Dehydration** | Orchestration → `session.dehydrate()` → SessionManager → blob | Azure Blob | Yes |
+| **Dehydration** | Orchestration → `session.dehydrate()` → SessionManager → blob | AWS S3 | Yes |
 
 ### 3.4 Session Catalog (CMS)
 
@@ -437,7 +437,7 @@ Worker A: session active (in SessionManager memory)
   |
   +-- 1. ManagedSession.destroy() --> CopilotSession.destroy()
   |      +-- CLI flushes conversation state to ~/.copilot/session-state/{id}/
-  +-- 2. tar + upload to Azure Blob
+  +-- 2. tar + upload to S3
   +-- 3. Remove local files
   +-- 4. Orchestration resets affinityKey (newGuid)
   |
@@ -623,7 +623,7 @@ const info = await session.getInfo();
 // Scale to multiple workers
 const client = new PilotSwarmClient({
     store: process.env.DATABASE_URL,
-    blobConnectionString: process.env.BLOB_CONN,  // enables relocation
+    blobEnabled: true,  // enables relocation when S3-backed worker storage is configured
     maxSessionsPerRuntime: 50,
 });
 ```
@@ -1461,9 +1461,9 @@ async start(): Promise<void> {
     // 4. Create SessionManager (long-lived, owns ManagedSessions)
     this.sessionManager = new SessionManager(this.config.githubToken, this.cmsPool);
 
-    // 5. Create blob store if configured
-    if (this.config.blobConnectionString) {
-        this.blobStore = new SessionBlobStore(this.config.blobConnectionString);
+    // 5. Create S3 store if configured
+    if (this.config.awsS3BucketName && this.config.awsS3Region) {
+        this.blobStore = new SessionBlobStore(this.config.awsS3BucketName, this.config.awsS3Region);
     }
 
     // 6. Create duroxide Runtime + register orchestration and

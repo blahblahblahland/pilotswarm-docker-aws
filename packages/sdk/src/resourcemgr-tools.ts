@@ -138,8 +138,8 @@ export function createResourceManagerTools(opts: {
 
     const storageStatsTool = defineTool("get_storage_stats", {
         description:
-            "Get Azure Blob Storage statistics: total blob count, total size, " +
-            "breakdown by type (session state, metadata, artifacts), and orphaned blob count. " +
+            "Get S3 storage statistics: total object count, total size, " +
+            "breakdown by type (session state, metadata, artifacts), and orphaned object count. " +
             "Returns structured JSON. Requires blob storage to be configured.",
         parameters: {
             type: "object" as const,
@@ -152,17 +152,16 @@ export function createResourceManagerTools(opts: {
         },
         handler: async (args: { detectOrphans?: boolean }) => {
             if (!blobStore) {
-                return { error: "Blob storage not configured." };
+                return { error: "S3 storage not configured." };
             }
 
             try {
                 const detectOrphans = args.detectOrphans !== false;
 
-                // Access the container client via the blob store's internal container
-                // We need to iterate all blobs — use the internal containerClient
+                // Access the store's internal listing wrapper to iterate all objects.
                 const containerClient = (blobStore as any).containerClient;
                 if (!containerClient) {
-                    return { error: "Cannot access blob storage container." };
+                    return { error: "Cannot access S3 storage." };
                 }
 
                 const stats = {
@@ -428,15 +427,15 @@ export function createResourceManagerTools(opts: {
             },
         },
         handler: async (args: { confirm?: boolean }) => {
-            if (!blobStore) return { error: "Blob storage not configured." };
+            if (!blobStore) return { error: "S3 storage not configured." };
 
             try {
                 const containerClient = (blobStore as any).containerClient;
-                if (!containerClient) return { error: "Cannot access blob storage container." };
+                if (!containerClient) return { error: "Cannot access S3 storage." };
 
                 const confirm = args.confirm === true;
 
-                // Collect all session IDs referenced in blob storage
+                // Collect all session IDs referenced in object storage
                 const blobSessionIds = new Set<string>();
                 for await (const blob of containerClient.listBlobsFlat()) {
                     const name = blob.name;

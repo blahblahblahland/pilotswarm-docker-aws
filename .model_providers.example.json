@@ -125,3 +125,4 @@
     "_defaultModel_gpt54mini": "azure-openai:gpt-5.4-mini",
     "defaultModel": "github-copilot:claude-opus-4.6"
 }
+ 

@@ -13,8 +13,11 @@
  *   LLM_API_VERSION                 — Azure API version (default: "2024-10-21")
  *   COPILOT_MODEL                   — Model name/deployment (default: auto)
  *   LOG_LEVEL                       — Tracing level (default: "info")
- *   AZURE_STORAGE_CONNECTION_STRING — Blob storage for session dehydration
- *   AZURE_STORAGE_CONTAINER         — Blob container name (default: "copilot-sessions")
+ *   AWS_S3_BUCKET_NAME              — S3 bucket for session dehydration
+ *   AWS_S3_REGION                   — S3 region
+ *   AWS_ACCESS_KEY_ID               — AWS access key ID
+ *   AWS_SECRET_ACCESS_KEY           — AWS secret access key
+ *   AWS_S3_ENDPOINT                 — Optional S3-compatible endpoint override
  *   POD_NAME                        — K8s pod name (default: hostname)
  *   PLUGIN_DIRS                     — Comma-separated plugin directories (default: /app/plugin)
  *
@@ -53,8 +56,11 @@ const worker = new PilotSwarmWorker({
     store: process.env.DATABASE_URL,
     githubToken: process.env.GITHUB_TOKEN,
     logLevel,
-    blobConnectionString: process.env.AZURE_STORAGE_CONNECTION_STRING,
-    blobContainer: process.env.AZURE_STORAGE_CONTAINER || "copilot-sessions",
+    awsS3BucketName: process.env.AWS_S3_BUCKET_NAME,
+    awsS3Region: process.env.AWS_S3_REGION,
+    awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    awsS3Endpoint: process.env.AWS_S3_ENDPOINT,
     workerNodeId: podName,
     systemMessage: SYSTEM_MESSAGE,
     pluginDirs,

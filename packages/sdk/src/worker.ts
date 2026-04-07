@@ -133,16 +133,22 @@ export class PilotSwarmWorker {
         };
         const effectiveSessionStateDir = options.sessionStateDir ?? DEFAULT_SESSION_STATE_DIR;
 
-        if (options.blobConnectionString) {
+        if (options.awsS3BucketName && options.awsS3Region) {
             this.blobStore = new SessionBlobStore(
-                options.blobConnectionString,
-                options.blobContainer ?? "copilot-sessions",
-                effectiveSessionStateDir,
+                options.awsS3BucketName,
+                options.awsS3Region,
+                options.sessionStateDir,
+                {
+                    accessKeyId: options.awsAccessKeyId,
+                    secretAccessKey: options.awsSecretAccessKey,
+                    endpoint: options.awsS3Endpoint,
+                },
             );
             this.artifactStore = this.blobStore;
         } else {
-            // Local mode: use filesystem-based artifact storage
-            const artifactDir = path.join(path.dirname(effectiveSessionStateDir), "artifacts");
+            const artifactDir = options.sessionStateDir
+                ? path.join(path.dirname(options.sessionStateDir), "artifacts")
+                : undefined;
             this.artifactStore = new FilesystemArtifactStore(artifactDir);
         }
 
@@ -175,6 +181,7 @@ export class PilotSwarmWorker {
                 provider: options.provider,
                 modelProviders: this._modelProviders ?? undefined,
                 turnTimeoutMs: options.turnTimeoutMs,
+                promptGuardrails: options.promptGuardrails,
             },
             effectiveSessionStateDir,
         );
@@ -264,7 +271,7 @@ export class PilotSwarmWorker {
 
     // ─── Lifecycle ───────────────────────────────────────────
 
-    async start(): Promise<void> {
+    async start(): Promise<void> {//creates the duroxide runtime and starts it, making the worker ready to accept sessions and execute activities
         if (this._started) return;
 
         this._provider = await this._createProvider();

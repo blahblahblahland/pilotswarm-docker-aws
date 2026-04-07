@@ -36,6 +36,7 @@ Start with the path that matches what you are trying to do.
 
 - [Agent Contracts](./contracts/agent-contracts.md) — prompt, tool, runtime, and naming rules that should stay true across code, docs, and tests
 - [Deploying To AKS](./deploying-to-aks.md) — remote worker deployment and rollout workflow
+- [Deploying To EC2](./deploying-to-ec2.md) — worker-only deployment on a single EC2 instance with Docker, systemd, Postgres, and S3
 - [Component Interactions](./component-interactions.md) — message flow and lifecycle diagrams
 - [Layer Diagram](./layer-diagram.md) — fast mental model for the stack
 

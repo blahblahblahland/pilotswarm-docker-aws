@@ -131,7 +131,7 @@ export class FilesystemSessionStore implements SessionStateStore {
 
 /**
  * Interface for artifact (file) storage.
- * Implemented by both SessionBlobStore (Azure Blob) and FilesystemArtifactStore (local disk).
+ * Implemented by both SessionBlobStore (S3) and FilesystemArtifactStore (local disk).
  */
 export interface ArtifactStore {
     uploadArtifact(sessionId: string, filename: string, content: string, contentType?: string): Promise<string>;
@@ -143,7 +143,7 @@ export interface ArtifactStore {
 const DEFAULT_ARTIFACT_DIR = path.join(os.homedir(), ".copilot", "artifacts");
 
 /**
- * Filesystem-based artifact store for local mode (no Azure Blob).
+ * Filesystem-based artifact store for local mode (no S3 object storage).
  * Stores artifacts as plain files under `<artifactDir>/<sessionId>/<filename>`.
  * @internal
  */

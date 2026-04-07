@@ -1,0 +1,20 @@
+[Unit]
+Description=PilotSwarm worker container
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+TimeoutStartSec=0
+TimeoutStopSec=45
+EnvironmentFile=/etc/pilotswarm/worker.service.env
+ExecStartPre=-/usr/bin/docker rm -f pilotswarm-worker
+ExecStartPre=/usr/bin/docker pull ${PILOTSWARM_IMAGE}
+ExecStart=/usr/bin/docker run --rm --name pilotswarm-worker --env-file /etc/pilotswarm/worker.env --log-driver json-file --log-opt max-size=10m --log-opt max-file=5 ${PILOTSWARM_IMAGE}
+ExecStop=/usr/bin/docker stop -t 30 pilotswarm-worker
+
+[Install]
+WantedBy=multi-user.target

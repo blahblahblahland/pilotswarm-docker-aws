@@ -54,7 +54,8 @@
     "url": "https://github.com/affandar/PilotSwarm/issues"
   },
   "dependencies": {
-    "@azure/storage-blob": "^12.31.0",
+    "@aws-sdk/client-s3": "^3.1025.0",
+    "@aws-sdk/s3-request-presigner": "^3.1025.0",
     "@github/copilot": "^1.0.2",
     "@github/copilot-sdk": "^0.2.0",
     "duroxide": "^0.1.19",

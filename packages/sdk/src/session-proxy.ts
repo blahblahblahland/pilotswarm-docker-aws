@@ -7,6 +7,14 @@ import { systemChildAgentUUID } from "./agent-loader.js";
 import { PilotSwarmClient } from "./client.js";
 import { loadKnowledgeIndexFromFactStore } from "./knowledge-index.js";
 import { mergePromptSections } from "./prompt-layering.js";
+import {
+    buildGuardedTurnPrompt,
+    buildPromptGuardrailRefusal,
+    containsUnsafeAuthorityClaim,
+    evaluatePromptGuardrails,
+    isHighRiskTurnResult,
+    shouldRunPromptGuardrailDetector,
+} from "./prompt-guardrails.js";
 import os from "node:os";
 
 const SESSION_RECOVERY_NOTICE =
