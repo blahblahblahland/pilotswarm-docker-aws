@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upstream Portal Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #1a1a2e; color: #e0e0e0; font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; height: 100vh; overflow: hidden; }
+    .splash-cyan { color: #00d4ff; }
+    .splash-green { color: #00ff88; }
+    .splash-yellow { color: #ffd700; }
+    .splash-magenta { color: #ff00ff; }
+    textarea:focus { outline: none; border-color: #00d4ff; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #0d0d1a; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    .resizer { width: 4px; background: #333; cursor: col-resize; flex-shrink: 0; transition: background 0.1s; }
+    .resizer:hover { background: #00d4ff44; }
+    .tool-accordion { border: 1px solid #333; border-radius: 6px; margin-top: 6px; overflow: hidden; }
+    .tool-accordion summary { padding: 6px 10px; cursor: pointer; font-size: 11px; color: #00d4ff; background: #0f1a2e; list-style: none; }
+    .tool-accordion summary::-webkit-details-marker { display: none; }
+    .tool-accordion[open] summary { border-bottom: 1px solid #333; }
+    .tool-body { padding: 8px 10px; font-size: 11px; color: #888; font-family: monospace; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
+    .seq-line { display: flex; align-items: center; gap: 0; font-size: 10px; }
+    .seq-node { padding: 2px 8px; border: 1px solid #333; border-radius: 3px; white-space: nowrap; font-size: 10px; }
+    .seq-arrow { flex: 1; height: 1px; background: #444; position: relative; }
+    .seq-arrow::after { content: '▶'; position: absolute; right: -1px; top: -7px; font-size: 9px; color: #444; }
+    .seq-label { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 9px; color: #888; background: #1a1a2e; padding: 0 3px; }
+  </style>
+</head>
+<body class="flex flex-col" style="height:100vh">
+
+  <!-- Top bar -->
+  <header class="flex items-center justify-between px-4 py-2 border-b border-gray-700" style="background:#0d0d1a; flex-shrink:0">
+    <span class="font-bold text-white tracking-wide text-sm">● PilotSwarm</span>
+    <div class="flex items-center gap-3 text-sm text-gray-400">
+      <button class="hover:text-white">?</button>
+      <span>⚙️</span>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Sidebar (260px) -->
+    <div class="flex flex-col border-r border-gray-700 overflow-hidden" style="width:260px; flex-shrink:0">
+      <div class="p-3 border-b border-gray-700">
+        <button class="w-full py-2 px-3 rounded text-white text-sm font-medium" style="background:#0e7490">+ New Session</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-2 text-sm">
+        <div class="text-xs text-gray-500 uppercase tracking-wider px-2 py-1">Sessions</div>
+
+        <!-- Active session -->
+        <button class="w-full text-left px-2 py-1.5 rounded text-sm mb-0.5" style="background:#164e6344; color:#67e8f9">
+          <div class="flex items-center gap-2">
+            <span style="color:#4ade80">●</span>
+            <span class="truncate">Debug authentication flow</span>
+          </div>
+          <div class="text-xs text-gray-500 ml-5 truncate">a3f82b1c</div>
+        </button>
+
+        <!-- Other sessions -->
+        <button class="w-full text-left px-2 py-1.5 rounded text-sm text-gray-300 hover:bg-gray-800 mb-0.5" style="">
+          <div class="flex items-center gap-2">
+            <span class="text-gray-500">●</span>
+            <span class="truncate">Refactor database layer</span>
+          </div>
+          <div class="text-xs text-gray-500 ml-5 truncate">7c1d4e9a</div>
+        </button>
+        <button class="w-full text-left px-2 py-1.5 rounded text-sm text-gray-300 hover:bg-gray-800 mb-0.5">
+          <div class="flex items-center gap-2">
+            <span class="text-gray-500">●</span>
+            <span class="truncate">Write unit tests for API</span>
+          </div>
+          <div class="text-xs text-gray-500 ml-5 truncate">2e8b3f71</div>
+        </button>
+
+        <!-- System -->
+        <div class="text-xs text-gray-500 uppercase tracking-wider px-2 py-1 mt-3">System</div>
+        <div class="px-2 py-1 text-xs" style="color:#ca8a04">≋ PilotSwarm Agent</div>
+        <div class="px-2 py-1 text-xs" style="color:#ca8a04">≋ Sweeper Agent</div>
+        <div class="px-2 py-1 text-xs" style="color:#ca8a04">≋ Resource Manager</div>
+      </div>
+      <div class="border-t border-gray-700 p-2 text-xs text-gray-500">
+        6 sessions
+      </div>
+    </div>
+
+    <!-- Resizer -->
+    <div class="resizer"></div>
+
+    <!-- Center: Chat -->
+    <div class="flex flex-col flex-1 min-w-0">
+      <!-- Messages -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+
+        <!-- User message -->
+        <div class="rounded-lg p-4" style="background:#1e2a3a; border:1px solid #374151">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-white text-xs">You</span>
+            <span class="text-xs text-gray-500">14:32:01</span>
+          </div>
+          <div class="text-sm text-gray-200">Can you help me debug the authentication flow? The JWT tokens seem to be expiring too quickly.</div>
+        </div>
+
+        <!-- Assistant message with tool calls -->
+        <div class="rounded-lg p-4" style="background:#162030">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-xs" style="color:#00d4ff">Copilot</span>
+            <span class="text-xs text-gray-500">14:32:08</span>
+          </div>
+          <div class="text-sm text-gray-200 mb-2">I'll investigate the JWT configuration. Let me look at the token settings and middleware.</div>
+
+          <!-- Tool calls accordion -->
+          <details class="tool-accordion">
+            <summary>⚡ read_file <span class="text-green-400 ml-2">✓ 142ms</span></summary>
+            <div class="tool-body">
+              <div class="text-gray-400 mb-1">Args: {"path": "src/auth/jwt.config.ts"}</div>
+              <div class="text-gray-300">export const jwtConfig = {
+  secret: process.env.JWT_SECRET,
+  expiresIn: '15m',   // ← likely too short
+  algorithm: 'HS256'
+}</div>
+            </div>
+          </details>
+
+          <details class="tool-accordion" open>
+            <summary>⚡ read_file <span class="text-yellow-400 ml-2">⟳ running…</span></summary>
+            <div class="tool-body">
+              <div class="text-gray-400">Args: {"path": "src/middleware/auth.ts"}</div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Thinking indicator -->
+        <div class="flex items-center gap-2 text-gray-500 text-sm px-1">
+          <span class="animate-pulse" style="color:#00d4ff">●</span>
+          <span class="animate-pulse" style="color:#00d4ff; animation-delay:0.2s">●</span>
+          <span class="animate-pulse" style="color:#00d4ff; animation-delay:0.4s">●</span>
+          <span class="text-xs text-gray-500 ml-1">thinking…</span>
+        </div>
+      </div>
+
+      <!-- Input bar -->
+      <div class="border-t border-gray-700" style="background:#0d0d1a">
+        <div class="flex items-end p-3 gap-2">
+          <textarea
+            placeholder="Message PilotSwarm…"
+            rows="1"
+            class="flex-1 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 resize-none"
+            style="background:#1a1a2e; border:1px solid #374151"
+          ></textarea>
+          <button class="px-3 py-2 rounded-lg text-sm text-white" style="background:#0e7490">⏎</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resizer -->
+    <div class="resizer"></div>
+
+    <!-- Inspector (360px) -->
+    <div class="flex flex-col border-l border-gray-700 overflow-hidden" style="width:360px; flex-shrink:0">
+      <!-- Tab bar -->
+      <div class="flex border-b border-gray-700 text-xs">
+        <button class="px-3 py-2 border-b-2" style="color:#00d4ff; border-color:#00d4ff">Activity</button>
+        <button class="px-3 py-2 text-gray-500 hover:text-gray-300">Logs</button>
+        <button class="px-3 py-2 text-gray-500 hover:text-gray-300">Sequence</button>
+        <button class="px-3 py-2 text-gray-500 hover:text-gray-300">Nodes</button>
+        <button class="px-3 py-2 text-gray-500 hover:text-gray-300">📄 Files</button>
+      </div>
+
+      <!-- Activity tab content -->
+      <div class="flex-1 overflow-y-auto p-3 text-xs font-mono space-y-1">
+        <div class="text-gray-500 text-xs uppercase tracking-wider mb-2">Tool Calls</div>
+
+        <div class="flex items-start gap-2 py-1">
+          <span style="color:#4ade80">✓</span>
+          <div>
+            <span class="text-gray-300">read_file</span>
+            <span class="text-gray-500 ml-2">142ms</span>
+            <div class="text-gray-500 mt-0.5">src/auth/jwt.config.ts</div>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2 py-1">
+          <span style="color:#facc15" class="animate-pulse">⟳</span>
+          <div>
+            <span class="text-gray-300">read_file</span>
+            <span class="text-gray-500 ml-2">running…</span>
+            <div class="text-gray-500 mt-0.5">src/middleware/auth.ts</div>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-800 mt-3 pt-3">
+          <div class="text-gray-500 text-xs uppercase tracking-wider mb-2">Sequence Diagram</div>
+
+          <!-- Mini sequence preview -->
+          <div class="space-y-3 px-1">
+            <div class="seq-line">
+              <div class="seq-node" style="background:#1a1a2e; color:#00d4ff">User</div>
+              <div class="seq-arrow relative mx-1">
+                <div class="seq-label">send message</div>
+              </div>
+              <div class="seq-node" style="background:#1a1a2e; color:#00ff88">Agent</div>
+            </div>
+            <div class="seq-line">
+              <div class="seq-node" style="background:#1a1a2e; color:#00ff88">Agent</div>
+              <div class="seq-arrow relative mx-1">
+                <div class="seq-label">read_file</div>
+              </div>
+              <div class="seq-node" style="background:#1a1a2e; color:#ffd700">Tools</div>
+            </div>
+            <div class="seq-line">
+              <div class="seq-node" style="background:#1a1a2e; color:#ffd700">Tools</div>
+              <div class="seq-arrow relative mx-1">
+                <div class="seq-label">result</div>
+              </div>
+              <div class="seq-node" style="background:#1a1a2e; color:#00ff88">Agent</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-800 mt-3 pt-3">
+          <div class="text-gray-500 text-xs uppercase tracking-wider mb-2">Session Info</div>
+          <div class="space-y-1 text-gray-400">
+            <div class="flex justify-between"><span>Session ID</span><span class="text-gray-300 font-mono">a3f82b1c</span></div>
+            <div class="flex justify-between"><span>Model</span><span class="text-gray-300">claude-sonnet-4-6</span></div>
+            <div class="flex justify-between"><span>Status</span><span style="color:#4ade80">running</span></div>
+            <div class="flex justify-between"><span>Iteration</span><span class="text-gray-300">3</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="flex items-center justify-between px-4 py-1 border-t border-gray-700 text-xs text-gray-500" style="background:#0d0d1a; flex-shrink:0">
+    <span>p prompt · ? help · Esc quit</span>
+    <span class="flex items-center gap-3">
+      <span style="color:#4ade80">● Connected</span>
+      <span>6 sessions</span>
+      <span>v0.1.12</span>
+    </span>
+  </div>
+
+  <!-- Comparison note -->
+  <div class="fixed bottom-12 right-4 text-xs text-gray-600 text-right pointer-events-none">
+    upstream/main — packages/portal
+  </div>
+
+</body>
+</html>
