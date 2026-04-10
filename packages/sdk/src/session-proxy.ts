@@ -7,6 +7,7 @@ import { systemChildAgentUUID } from "./agent-loader.js";
 import { PilotSwarmClient } from "./client.js";
 import { loadKnowledgeIndexFromFactStore } from "./knowledge-index.js";
 import { mergePromptSections } from "./prompt-layering.js";
+import type { LangFuseTracer } from "./use-trace.js";
 import {
     buildGuardedTurnPrompt,
     buildPromptGuardrailRefusal,
@@ -50,6 +51,15 @@ function buildUnrecoverableSessionLossMessage(sessionId: string, detail: string)
     return `${SESSION_STATE_MISSING_PREFIX} unrecoverable live Copilot session loss for ${sessionId}. ` +
         `The runtime attempted to resume or rehydrate the session, but recovery failed. ` +
         `Some very recent in-memory state may have been lost. ${detail}`;
+}
+
+function detectPromptSource(
+    prompt: string,
+    bootstrap?: boolean,
+): import("./types.js").PromptSource {
+    if (bootstrap) return "system_generated";
+    if (/^\[CHILD_UPDATE from=(\S+) type=(\S+)/.test(prompt)) return "sub_agent";
+    return "user";
 }
 
 // ─── SessionProxy ────────────────────────────────────────────────
@@ -251,6 +261,7 @@ export function registerActivities(
     factStore?: import("./facts-store.js").FactStore | null,
     /** Worker node identifier — written on every CMS event for worker tracking. */
     workerNodeId?: string,
+    langFuseTracer?: LangFuseTracer,
 ) {
     // ── runTurn ──────────────────────────────────────────────
     runtime.registerActivity("runTurn", async (
@@ -329,6 +340,21 @@ export function registerActivities(
             } finally {
                 inlineSdkClientPromise = null;
             }
+        };
+        const eventBuffer: Array<{ eventType: string; data: unknown }> = [];
+        const bufferCmsEvent = (eventType: string, data: unknown) => {
+            if (!catalog) return;
+            eventBuffer.push({ eventType, data });
+        };
+        const flushBufferedEvents = async () => {
+            if (!catalog || eventBuffer.length === 0) return;
+            const pendingEvents = eventBuffer.splice(0, eventBuffer.length);
+            activityCtx.traceInfo(
+                `[runTurn] flushing buffered CMS events count=${pendingEvents.length} session=${input.sessionId}`,
+            );
+            await catalog.recordEvents(input.sessionId, pendingEvents, workerNodeId).catch((err: any) => {
+                activityCtx.traceInfo(`[runTurn] CMS recordEvents batch failed: ${err}`);
+            });
         };
 
         const normalizeAgentLookup = (value?: string) => (value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -546,12 +572,11 @@ export function registerActivities(
 
                     await childSession.send(agentTask, { bootstrap: true });
 
-                    if (catalog) {
-                        await catalog.recordEvents(input.sessionId, [{
-                            eventType: "session.agent_spawned",
-                            data: { childSessionId: childSession.sessionId, agentId: agentId || undefined, task: agentTask.slice(0, 500) },
-                        }], workerNodeId);
-                    }
+                    bufferCmsEvent("session.agent_spawned", {
+                        childSessionId: childSession.sessionId,
+                        agentId: agentId || undefined,
+                        task: agentTask.slice(0, 500),
+                    });
 
                     const childOrchId = `session-${childSession.sessionId}`;
                     return `[SYSTEM: Sub-agent spawned successfully.\n` +
@@ -676,39 +701,96 @@ export function registerActivities(
                 clearInterval(cancelPoll);
             }
         }, 2_000);
+        const promptSource = detectPromptSource(input.prompt, input.bootstrap);
+        let lfGeneration: any = null;
+        const lfToolSpans = new Map<string, any>();
+        const lfTurnStart = Date.now();
+        const finalizeLangFuse = async (result: TurnResult): Promise<TurnResult> => {
+            if (!lfGeneration) return result;
+            try {
+                const usage = (lfGeneration as any)._usage;
+                lfGeneration.end({
+                    output: result.type === "completed" ? result.content : `[${result.type}]`,
+                    usage: usage ? { input: usage.inputTokens, output: usage.outputTokens, unit: "TOKENS" } : undefined,
+                    level: result.type === "error" ? "ERROR" : "DEFAULT",
+                });
+            } catch {}
+            lfGeneration = null;
+            return result;
+        };
 
         try {
+            if (langFuseTracer && !input.bootstrap) {
+                try {
+                    const trace = langFuseTracer.getOrCreateTrace(input.sessionId, {
+                        name: `session-${input.sessionId.slice(0, 8)}`,
+                        sessionId: input.sessionId,
+                        metadata: {
+                            agentName: input.config.boundAgentName ?? "default",
+                            promptSource,
+                        },
+                    });
+                    lfGeneration = trace.generation({
+                        name: "turn",
+                        input: input.prompt,
+                        model: input.config.model ?? "unknown",
+                        startTime: new Date(lfTurnStart),
+                    });
+                } catch {}
+            }
+
             // Build onEvent callback: write each non-ephemeral event to CMS as it fires
             const EPHEMERAL_TYPES = new Set([
                 "assistant.message_delta",
                 "assistant.reasoning_delta",
                 "user.message", // Already recorded explicitly above — skip the SDK's duplicate
             ]);
-            const onEvent = catalog
+            const onEvent = (catalog || langFuseTracer)
                 ? (event: { eventType: string; data: unknown }) => {
-                    if (EPHEMERAL_TYPES.has(event.eventType)) return;
-                    if (event.eventType === "session.wait_started") {
-                        const data = (event.data ?? {}) as { reason?: string };
-                        catalog.updateSession(input.sessionId, {
-                            state: "waiting",
-                            waitReason: data.reason ?? null,
-                            lastActiveAt: new Date(),
-                        }).catch((err: any) => {
-                            activityCtx.traceInfo(`[runTurn] CMS wait_started status update failed: ${err}`);
-                        });
-                    } else if (event.eventType === "session.input_required_started") {
-                        const data = (event.data ?? {}) as { question?: string };
-                        catalog.updateSession(input.sessionId, {
-                            state: "input_required",
-                            waitReason: data.question ?? null,
-                            lastActiveAt: new Date(),
-                        }).catch((err: any) => {
-                            activityCtx.traceInfo(`[runTurn] CMS input_required_started status update failed: ${err}`);
-                        });
+                    if (catalog) {
+                        if (EPHEMERAL_TYPES.has(event.eventType)) return;
+                        if (event.eventType === "session.wait_started") {
+                            const data = (event.data ?? {}) as { reason?: string };
+                            catalog.updateSession(input.sessionId, {
+                                state: "waiting",
+                                waitReason: data.reason ?? null,
+                                lastActiveAt: new Date(),
+                            }).catch((err: any) => {
+                                activityCtx.traceInfo(`[runTurn] CMS wait_started status update failed: ${err}`);
+                            });
+                        } else if (event.eventType === "session.input_required_started") {
+                            const data = (event.data ?? {}) as { question?: string };
+                            catalog.updateSession(input.sessionId, {
+                                state: "input_required",
+                                waitReason: data.question ?? null,
+                                lastActiveAt: new Date(),
+                            }).catch((err: any) => {
+                                activityCtx.traceInfo(`[runTurn] CMS input_required_started status update failed: ${err}`);
+                            });
+                        }
+                        bufferCmsEvent(event.eventType, event.data);
                     }
-                    catalog.recordEvents(input.sessionId, [event], workerNodeId).catch((err: any) => {
-                        activityCtx.traceInfo(`[runTurn] CMS recordEvent failed: ${err}`);
-                    });
+
+                    if (langFuseTracer && lfGeneration) {
+                        if (event.eventType === "tool.execution_start") {
+                            const data = event.data as any;
+                            try {
+                                const span = lfGeneration.span({
+                                    name: `tool:${data.toolName}`,
+                                    input: data.toolArgs,
+                                });
+                                lfToolSpans.set(data.toolName, span);
+                            } catch {}
+                        } else if (event.eventType === "tool.execution_complete") {
+                            const data = event.data as any;
+                            try {
+                                lfToolSpans.get(data.toolName)?.end({ output: data.error ?? data.result });
+                            } catch {}
+                            lfToolSpans.delete(data.toolName);
+                        } else if (event.eventType === "assistant.usage") {
+                            (lfGeneration as any)._usage = event.data;
+                        }
+                    }
                 }
                 : undefined;
 
@@ -717,7 +799,7 @@ export function registerActivities(
             const isTimerPrompt = /^The \d+ second wait is now complete\./i.test(input.prompt);
             const isRetryAttempt = (input.retryCount ?? 0) > 0;
             if (catalog && input.config.turnSystemPrompt && !isRetryAttempt) {
-                catalog.recordEvents(input.sessionId, [{
+                await catalog.recordEvents(input.sessionId, [{
                     eventType: "system.message",
                     data: { content: input.config.turnSystemPrompt },
                 }], workerNodeId).catch((err: any) => {
@@ -726,7 +808,7 @@ export function registerActivities(
             }
             if (catalog && !isTimerPrompt && !input.bootstrap && !isRetryAttempt) {
                 const promptEventType = isInternalSystemPrompt(input.prompt) ? "system.message" : "user.message";
-                catalog.recordEvents(input.sessionId, [{
+                await catalog.recordEvents(input.sessionId, [{
                     eventType: promptEventType,
                     data: { content: input.prompt },
                 }], workerNodeId).catch((err: any) => {
@@ -747,14 +829,7 @@ export function registerActivities(
             activityCtx.traceInfo(`[runTurn] invoking ManagedSession.runTurn for ${input.sessionId}`);
 
             // Record turn_started CMS event
-            if (catalog) {
-                catalog.recordEvents(input.sessionId, [{
-                    eventType: "session.turn_started",
-                    data: { iteration: input.turnIndex ?? 0 },
-                }], workerNodeId).catch((err: any) => {
-                    activityCtx.traceInfo(`[runTurn] CMS turn_started event failed: ${err}`);
-                });
-            }
+            bufferCmsEvent("session.turn_started", { iteration: input.turnIndex ?? 0 });
 
             const runTurnWithPrompt = async (targetSession: any, prompt: string) => {
                 return await targetSession.runTurn(prompt, {
@@ -777,18 +852,11 @@ export function registerActivities(
                     activityCtx.traceInfo(`[runTurn] warm-session invalidation failed (non-fatal): ${err?.message ?? err}`);
                 });
 
-                if (catalog) {
-                    await catalog.recordEvents(input.sessionId, [{
-                        eventType: "system.message",
-                        data: {
-                            content:
-                                "The runtime recovered this session after the worker lost the live Copilot session. " +
-                                "Some very recent in-memory state may have been lost.",
-                        },
-                    }], workerNodeId).catch((err: any) => {
-                        activityCtx.traceInfo(`[runTurn] CMS recovery notice failed: ${err}`);
-                    });
-                }
+                bufferCmsEvent("system.message", {
+                    content:
+                        "The runtime recovered this session after the worker lost the live Copilot session. " +
+                        "Some very recent in-memory state may have been lost.",
+                });
 
                 try {
                     session = await sessionManager.getOrCreate(input.sessionId, runConfig, {
@@ -803,7 +871,8 @@ export function registerActivities(
                         )
                         : buildUnrecoverableSessionLossMessage(input.sessionId, recoveryMessage);
                     activityCtx.traceInfo(`[runTurn] unrecoverable session loss for ${input.sessionId}: ${fatalMessage}`);
-                    return await failForMissingState(fatalMessage);
+                    await flushBufferedEvents();
+                    return await finalizeLangFuse(await failForMissingState(fatalMessage));
                 }
 
                 const recoveredPrompt = mergePromptSections([SESSION_RECOVERY_NOTICE, input.prompt]) || input.prompt;
@@ -812,7 +881,8 @@ export function registerActivities(
                 if (result.type === "error" && isLiveSessionLostErrorMessage((result as any).message)) {
                     const fatalMessage = buildUnrecoverableSessionLossMessage(input.sessionId, (result as any).message);
                     activityCtx.traceInfo(`[runTurn] recovery re-run still reported lost session for ${input.sessionId}: ${fatalMessage}`);
-                    return await failForMissingState(fatalMessage);
+                    await flushBufferedEvents();
+                    return await finalizeLangFuse(await failForMissingState(fatalMessage));
                 }
             }
 
@@ -833,21 +903,18 @@ export function registerActivities(
             activityCtx.traceInfo(`[runTurn] ManagedSession.runTurn completed for ${input.sessionId} type=${result.type}`);
 
             // Record turn_completed CMS event
-            if (catalog) {
-                catalog.recordEvents(input.sessionId, [{
-                    eventType: "session.turn_completed",
-                    data: { iteration: input.turnIndex ?? 0 },
-                }], workerNodeId).catch((err: any) => {
-                    activityCtx.traceInfo(`[runTurn] CMS turn_completed event failed: ${err}`);
-                });
-            }
+            bufferCmsEvent("session.turn_completed", { iteration: input.turnIndex ?? 0 });
 
-            if (cancelled) return { type: "cancelled" };
+            if (cancelled) {
+                await flushBufferedEvents();
+                return await finalizeLangFuse({ type: "cancelled" });
+            }
 
             // ── Activity-level writeback: sync turn result → CMS ──
             // This lets listSessions() read entirely from CMS without
             // hitting duroxide for every session's customStatus.
             if (catalog) {
+                await flushBufferedEvents();
                 const statusMap: Record<string, string> = {
                     completed: "idle", // orchestration decides idle vs completed; default to idle
                     wait: "waiting",
@@ -887,9 +954,12 @@ export function registerActivities(
                 });
             }
 
-            return result;
+            return await finalizeLangFuse(result);
         } finally {
             clearInterval(cancelPoll);
+            if (langFuseTracer) {
+                try { await langFuseTracer.flush(); } catch {}
+            }
             const clientToStop: PilotSwarmClient | null = inlineSdkClient;
             if (clientToStop) {
                 try { await (clientToStop as any).stop(); } catch {}
