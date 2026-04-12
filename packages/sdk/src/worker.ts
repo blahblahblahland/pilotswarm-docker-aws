@@ -17,6 +17,7 @@ import { createFactStoreForUrl, type FactStore } from "./facts-store.js";
 import { createSweeperTools } from "./sweeper-tools.js";
 import { createResourceManagerTools } from "./resourcemgr-tools.js";
 import { composeSystemPrompt, mergePromptSections } from "./prompt-layering.js";
+import { createLangFuseTracer } from "./use-trace.js";
 import { defineTool } from "@github/copilot-sdk";
 import type { Tool } from "@github/copilot-sdk";
 import type { PilotSwarmWorkerOptions, ManagedSessionConfig, OrchestrationInput, SerializableSessionConfig } from "./types.js";
@@ -315,9 +316,10 @@ export class PilotSwarmWorker {
                 return lineage;
             });
         }
+        const langFuseTracer = createLangFuseTracer();
 
         this.runtime = new Runtime(this._provider, {
-            dispatcherPollIntervalMs: 10,
+            dispatcherPollIntervalMs: 500,
             workerLockTimeoutMs: 10_000,
             logLevel: this.config.logLevel ?? "error",
             maxSessionsPerRuntime: this.config.maxSessionsPerRuntime ?? 50,
@@ -344,6 +346,7 @@ export class PilotSwarmWorker {
             this._rawLoadedAgents,
             this.factStore,
             this.config.workerNodeId,
+            langFuseTracer,
         );
 
         for (const registration of DURABLE_SESSION_ORCHESTRATION_REGISTRY) {
