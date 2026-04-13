@@ -3,7 +3,78 @@ import { z } from "zod";
 import type { ServerContext } from "../context.js";
 
 export function registerModelTools(server: McpServer, ctx: ServerContext) {
-    // 1. switch_model — Change the model for a session
+    // 1. list_models — List all available models
+    server.registerTool(
+        "list_models",
+        {
+            title: "List Models",
+            description: "List all available LLM models, optionally grouped by provider",
+            inputSchema: {
+                group_by_provider: z
+                    .boolean()
+                    .optional()
+                    .describe("If true, return models grouped by provider (default: flat list)"),
+            },
+        },
+        async ({ group_by_provider }) => {
+            try {
+                if (!ctx.models) {
+                    return {
+                        content: [
+                            { type: "text" as const, text: JSON.stringify({ error: "no model providers configured" }) },
+                        ],
+                        isError: true,
+                    };
+                }
+
+                const byProvider = ctx.models.getModelsByProvider();
+
+                if (group_by_provider) {
+                    const grouped = byProvider.map((p: any) => ({
+                        provider_id: p.providerId,
+                        type: p.type,
+                        models: p.models.map((m: any) => ({
+                            name: m.name,
+                            description: m.description,
+                            cost: m.cost,
+                        })),
+                    }));
+                    return {
+                        content: [
+                            { type: "text" as const, text: JSON.stringify({ providers: grouped }, null, 2) },
+                        ],
+                    };
+                }
+
+                // Flat list
+                const models = byProvider.flatMap((p: any) =>
+                    p.models.map((m: any) => ({
+                        name: m.name,
+                        provider: p.providerId,
+                        description: m.description,
+                        cost: m.cost,
+                    })),
+                );
+                const defaultModel = ctx.models.defaultModel ?? null;
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: JSON.stringify({ models, default_model: defaultModel, count: models.length }, null, 2),
+                        },
+                    ],
+                };
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                return {
+                    content: [{ type: "text" as const, text: `Error: ${msg}` }],
+                    isError: true,
+                };
+            }
+        },
+    );
+
+    // 2. switch_model — Change the model for a session
     server.registerTool(
         "switch_model",
         {
