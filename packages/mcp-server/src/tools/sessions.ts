@@ -20,9 +20,10 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                 agent: z.string().optional().describe("Agent name to bind the session to"),
                 system_message: z.string().optional().describe("Custom system message for the session"),
                 title: z.string().optional().describe("Optional title — if omitted, PilotSwarm auto-generates one from the conversation after the first turn"),
+                prompt: z.string().optional().describe("Initial message to send immediately after session creation (fire-and-forget)"),
             },
         },
-        async ({ model, agent, system_message, title }) => {
+        async ({ model, agent, system_message, title, prompt }) => {
             try {
                 const config: Record<string, unknown> = {};
                 if (model !== undefined) config.model = model;
@@ -54,6 +55,17 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                     }
                 }
 
+                // Fire initial prompt if provided (non-blocking)
+                let promptSent = false;
+                if (prompt) {
+                    try {
+                        await session.send(prompt);
+                        promptSent = true;
+                    } catch {
+                        // Best-effort — session still created
+                    }
+                }
+
                 return {
                     content: [
                         {
@@ -63,6 +75,7 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                                 status: "created",
                                 model: model ?? "default",
                                 title: title ?? null,
+                                ...(prompt !== undefined && { prompt_sent: promptSent }),
                             }),
                         },
                     ],
@@ -260,9 +273,13 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                     .boolean()
                     .optional()
                     .describe("Include system sessions like Sweeper Agent (default false)"),
+                agent_id: z
+                    .string()
+                    .optional()
+                    .describe("Filter by agent ID (e.g. 'sweeper', 'resourcemgr', or a custom agent name)"),
             },
         },
-        async ({ status_filter, include_system }) => {
+        async ({ status_filter, include_system, agent_id }) => {
             try {
                 let sessions = await ctx.mgmt.listSessions();
 
@@ -272,6 +289,9 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                 if (status_filter) {
                     const f = status_filter.toLowerCase();
                     sessions = sessions.filter((s: any) => s.status?.toLowerCase() === f);
+                }
+                if (agent_id) {
+                    sessions = sessions.filter((s: any) => s.agentId === agent_id);
                 }
 
                 const data = sessions.map((s: any) => ({
@@ -319,12 +339,17 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
         {
             title: "Get Session Detail",
             description:
-                "Get detailed information for a specific PilotSwarm session including status, context usage, cron state, and pending questions",
+                "Get detailed information for a specific PilotSwarm session including status, context usage, cron state, and pending questions. " +
+                "Use 'include' to fetch additional data: 'status' for live orchestration status, 'response' for latest LLM response, 'dump' for full Markdown dump.",
             inputSchema: {
                 session_id: z.string().describe("The session ID to inspect"),
+                include: z
+                    .array(z.enum(["status", "response", "dump"]))
+                    .optional()
+                    .describe("Additional data to include: 'status' (orchestration status), 'response' (latest LLM response), 'dump' (full Markdown dump)"),
             },
         },
-        async ({ session_id }) => {
+        async ({ session_id, include }) => {
             try {
                 const session = await ctx.mgmt.getSession(session_id);
                 if (!session) {
@@ -333,11 +358,39 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                         isError: true,
                     };
                 }
+
+                const result: Record<string, unknown> = { session };
+                const includes = new Set(include ?? []);
+
+                if (includes.has("status")) {
+                    try {
+                        result.orchestration_status = await ctx.mgmt.getSessionStatus(session_id);
+                    } catch {
+                        result.orchestration_status = null;
+                    }
+                }
+
+                if (includes.has("response")) {
+                    try {
+                        result.latest_response = await ctx.mgmt.getLatestResponse(session_id);
+                    } catch {
+                        result.latest_response = null;
+                    }
+                }
+
+                if (includes.has("dump")) {
+                    try {
+                        result.dump = await ctx.mgmt.dumpSession(session_id);
+                    } catch {
+                        result.dump = null;
+                    }
+                }
+
                 return {
                     content: [
                         {
                             type: "text" as const,
-                            text: JSON.stringify(session, null, 2),
+                            text: JSON.stringify(result, null, 2),
                         },
                     ],
                 };
@@ -368,6 +421,84 @@ export function registerSessionTools(server: McpServer, ctx: ServerContext) {
                 return {
                     content: [
                         { type: "text" as const, text: JSON.stringify({ deleted: true }) },
+                    ],
+                };
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                return {
+                    content: [{ type: "text" as const, text: `Error: ${msg}` }],
+                    isError: true,
+                };
+            }
+        },
+    );
+
+    // 10. get_session_events — Paginated CMS event stream with optional long-poll
+    server.registerTool(
+        "get_session_events",
+        {
+            title: "Get Session Events",
+            description:
+                "Read the CMS event stream for a session. Supports pagination with after_seq and long-polling " +
+                "with wait=true to block until new events or a status change arrives.",
+            inputSchema: {
+                session_id: z.string().describe("The session to read events for"),
+                after_seq: z.number().optional().describe("Return events after this CMS sequence number (for paging)"),
+                limit: z.number().optional().describe("Max events to return (default 50)"),
+                wait: z.boolean().optional().describe("If true, long-poll until new events or status change arrives"),
+                wait_timeout_ms: z.number().optional().describe("Long-poll timeout in ms (default 30000)"),
+                after_version: z.number().optional().describe("For wait mode: block until customStatusVersion exceeds this value"),
+            },
+        },
+        async ({ session_id, after_seq, limit, wait, wait_timeout_ms, after_version }) => {
+            try {
+                const eventLimit = limit ?? 50;
+                let statusChange: unknown = undefined;
+
+                if (wait) {
+                    const timeoutMs = wait_timeout_ms ?? 30_000;
+                    // If after_version not provided, fetch current version first
+                    let version = after_version;
+                    if (version === undefined) {
+                        try {
+                            const status = await ctx.mgmt.getSessionStatus(session_id);
+                            version = (status as any)?.customStatusVersion ?? 0;
+                        } catch {
+                            version = 0;
+                        }
+                    }
+                    try {
+                        statusChange = await ctx.mgmt.waitForStatusChange(
+                            session_id,
+                            version!,
+                            1_000,
+                            timeoutMs,
+                        );
+                    } catch {
+                        // Timeout or error — still return whatever events exist
+                    }
+                }
+
+                const events = await ctx.mgmt.getSessionEvents(session_id, after_seq, eventLimit);
+                const latestSeq = events.length > 0
+                    ? Math.max(...events.map((e: any) => e.seq ?? 0))
+                    : (after_seq ?? 0);
+
+                const result: Record<string, unknown> = {
+                    events,
+                    latest_seq: latestSeq,
+                    count: events.length,
+                };
+                if (statusChange !== undefined) {
+                    result.status_change = statusChange;
+                }
+
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: JSON.stringify(result, null, 2),
+                        },
                     ],
                 };
             } catch (err: unknown) {
