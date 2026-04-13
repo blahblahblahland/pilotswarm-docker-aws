@@ -62,10 +62,11 @@ export function registerFactsTools(server: McpServer, ctx: ServerContext) {
                     .array(z.string())
                     .optional()
                     .describe("Session IDs the reader has been granted access to"),
+                keys_only: z.boolean().optional().describe("If true, return only fact keys without values (default false)"),
                 limit: z.number().optional().describe("Maximum number of facts to return"),
             },
         },
-        async ({ key_pattern, tags, session_id, reader_session_id, granted_session_ids, limit }) => {
+        async ({ key_pattern, tags, session_id, reader_session_id, granted_session_ids, keys_only, limit }) => {
             try {
                 const query: Record<string, unknown> = {};
                 if (key_pattern !== undefined) query.keyPattern = key_pattern;
@@ -79,6 +80,19 @@ export function registerFactsTools(server: McpServer, ctx: ServerContext) {
                         : undefined;
 
                 const result = await ctx.facts.readFacts(query, access);
+
+                if (keys_only) {
+                    const keys = result.facts.map((f: any) => f.key);
+                    return {
+                        content: [
+                            {
+                                type: "text" as const,
+                                text: JSON.stringify({ count: keys.length, keys }, null, 2),
+                            },
+                        ],
+                    };
+                }
+
                 return {
                     content: [
                         {
