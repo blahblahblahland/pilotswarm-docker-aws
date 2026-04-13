@@ -5,9 +5,11 @@ import { registerAgentTools } from "./tools/agents.js";
 import { registerFactsTools } from "./tools/facts.js";
 import { registerModelTools } from "./tools/models.js";
 import { registerSessionResources } from "./resources/sessions.js";
+import { registerAgentResources } from "./resources/agents.js";
 import { registerFactsResources } from "./resources/facts.js";
 import { registerModelsResources } from "./resources/models.js";
 import { registerSkillPrompts } from "./prompts/skills.js";
+import { enableResourceSubscriptions } from "./resources/subscriptions.js";
 
 export function createMcpServer(ctx: ServerContext): McpServer {
     const server = new McpServer({
@@ -23,11 +25,15 @@ export function createMcpServer(ctx: ServerContext): McpServer {
 
     // Resources
     registerSessionResources(server, ctx);
+    registerAgentResources(server, ctx);
     registerFactsResources(server, ctx);
     registerModelsResources(server, ctx);
 
     // Prompts
     registerSkillPrompts(server, ctx);
+
+    // Resource subscriptions (best-effort push notifications)
+    enableResourceSubscriptions(server, ctx);
 
     return server;
 }
