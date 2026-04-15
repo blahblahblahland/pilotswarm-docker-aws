@@ -31,3 +31,40 @@ for (const file of files) {
 if (patched > 0) {
     console.log(`[postinstall] Patched ${patched} file(s) in @github/copilot-sdk for ESM compatibility`);
 }
+
+/**
+ * Patch duroxide to use duroxide-windows-x64 instead of duroxide-win32-x64-msvc.
+ * The duroxide package's loader (index.js) is hardcoded to require the platform-specific
+ * native module by old names. This patch updates the references to use the new package names.
+ *
+ * Can be removed once the duroxide package is updated upstream.
+ */
+const duroxideIndexPath = path.join(__dirname, "..", "node_modules", "duroxide", "index.js");
+const duroxidePkgPath = path.join(__dirname, "..", "node_modules", "duroxide", "package.json");
+
+let duroxydePatched = 0;
+
+// Patch index.js to use new package names
+if (fs.existsSync(duroxideIndexPath)) {
+    let content = fs.readFileSync(duroxideIndexPath, "utf-8");
+    if (content.includes("require('duroxide-win32-x64-msvc')")) {
+        content = content.replace(/require\('duroxide-win32-x64-msvc'\)/g, "require('duroxide-windows-x64')");
+        fs.writeFileSync(duroxideIndexPath, content, "utf-8");
+        duroxydePatched++;
+    }
+}
+
+// Patch package.json optionalDependencies
+if (fs.existsSync(duroxidePkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(duroxidePkgPath, "utf-8"));
+    if (pkg.optionalDependencies && pkg.optionalDependencies["duroxide-win32-x64-msvc"]) {
+        pkg.optionalDependencies["duroxide-windows-x64"] = pkg.optionalDependencies["duroxide-win32-x64-msvc"];
+        delete pkg.optionalDependencies["duroxide-win32-x64-msvc"];
+        fs.writeFileSync(duroxidePkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+        duroxydePatched++;
+    }
+}
+
+if (duroxydePatched > 0) {
+    console.log(`[postinstall] Patched ${duroxydePatched} file(s) in duroxide for Windows x64 native binding`);
+}
